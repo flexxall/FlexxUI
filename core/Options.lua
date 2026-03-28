@@ -1,0 +1,3 @@
+local _, ns = ...
+ns.Options = ns.Options or {}
+
