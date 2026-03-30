@@ -5,9 +5,11 @@ function UF.GetTexturePath(name)
   return UF.const.textures[name or ""] or UF.const.textures["default"]
 end
 
---- Player "dark zinc" fill (see ApplyPlayerHealthColor); deficit sits a bit lighter so it reads against the fill, not the frame.
+--- Player "dark zinc" fill (see ApplyPlayerHealthColor); depleted chunk uses a distinct dark red so it does not read as more grey bar.
 local DARK_HEALTH_FILL_R, DARK_HEALTH_FILL_G, DARK_HEALTH_FILL_B = 0.11, 0.12, 0.14
-local DARK_HEALTH_DEFICIT_LIFT = 0.065
+--- Missing health (backdrop behind fill): dark wine / brown-red, visibly separate from the charcoal fill.
+local DARK_HEALTH_DEFICIT_R, DARK_HEALTH_DEFICIT_G, DARK_HEALTH_DEFICIT_B = 0.34, 0.12, 0.14
+local DARK_HEALTH_DEFICIT_A = 0.78
 
 function UF.ApplyHealthBarMissingColor(bar, unit)
   if not bar then return end
@@ -15,11 +17,8 @@ function UF.ApplyHealthBarMissingColor(bar, unit)
   unit = unit or bar._flexxUnit
   local db = _G.FlexxUIDB or {}
   if unit == "player" and (db.playerHealthColorMode or "class") == "dark" then
-    local r = math.min(1, DARK_HEALTH_FILL_R + DARK_HEALTH_DEFICIT_LIFT)
-    local g = math.min(1, DARK_HEALTH_FILL_G + DARK_HEALTH_DEFICIT_LIFT)
-    local b = math.min(1, DARK_HEALTH_FILL_B + DARK_HEALTH_DEFICIT_LIFT)
-    local a = (db.healthBarMissingColor and db.healthBarMissingColor.a) or 0.55
-    bar:SetBackdropColor(r, g, b, math.max(a, 0.9))
+    local a = (db.healthBarMissingColor and type(db.healthBarMissingColor.a) == "number") and db.healthBarMissingColor.a or DARK_HEALTH_DEFICIT_A
+    bar:SetBackdropColor(DARK_HEALTH_DEFICIT_R, DARK_HEALTH_DEFICIT_G, DARK_HEALTH_DEFICIT_B, math.max(0.55, math.min(0.95, a)))
     return
   end
   local c = db.healthBarMissingColor or { r = 0, g = 0, b = 0, a = 0.55 }
@@ -306,3 +305,148 @@ function UF.ApplyPlayerHealthColor(bar, unit)
   UF.ApplyHealthBarMissingColor(bar, unit)
 end
 
+local PLAYER_LOW_HEALTH_PCT = 0.35
+
+--- Red border around the player health bar when HP is low (outline sits just outside the bar).
+function UF.EnsurePlayerLowHealthChrome(f)
+  if not f or f.unit ~= "player" or not f.health then return end
+  if f._playerLowHealthChrome then return end
+  local h = f.health
+  local glow = CreateFrame("Frame", nil, f, "BackdropTemplate")
+  glow:SetFrameStrata(f:GetFrameStrata())
+  local pred = f.healthPrediction
+  local predLevel = (pred and pred.GetFrameLevel and pred:GetFrameLevel()) or 100
+  glow:SetFrameLevel(predLevel + 2)
+  glow:SetPoint("TOPLEFT", h, "TOPLEFT", -3, 3)
+  glow:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", 3, -3)
+  glow:SetBackdrop({
+    bgFile = "Interface\\Buttons\\WHITE8x8",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = false,
+    edgeSize = 12,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+  })
+  glow:SetBackdropColor(0, 0, 0, 0)
+  glow:SetBackdropBorderColor(1, 0.2, 0.15, 0)
+  glow:EnableMouse(false)
+  glow:Hide()
+  f._playerLowHealthChrome = glow
+end
+
+--- Low HP border: all math on health must stay inside one pcall (Retail secret UnitHealth / bar values).
+function UF.UpdatePlayerLowHealthChrome(f)
+  if not f or f.unit ~= "player" or not f.health then return end
+  UF.EnsurePlayerLowHealthChrome(f)
+  local g = f._playerLowHealthChrome
+  if not g then return end
+  if UnitIsDeadOrGhost("player") then
+    g:Hide()
+    return
+  end
+
+  local ok, res = pcall(function()
+    if not UnitHealthPercent then
+      return { hide = true }
+    end
+    local scale = _G.CurveConstants and _G.CurveConstants.ScaleTo100
+    local n = UnitHealthPercent("player", true, scale)
+    local pct = (n + 0) / 100
+    if pct < 0 then pct = 0 end
+    if pct > 1 then pct = 1 end
+    if pct > PLAYER_LOW_HEALTH_PCT then
+      return { hide = true }
+    end
+    local t = pct / PLAYER_LOW_HEALTH_PCT
+    local intensity = 1 - t
+    return { show = true, a = 0.38 + 0.58 * intensity }
+  end)
+
+  if ok and res and res.show and type(res.a) == "number" then
+    g:SetBackdropBorderColor(1, 0.22, 0.18, res.a)
+    g:Show()
+  else
+    g:Hide()
+  end
+end
+
+--- Single aggro art texture around the health bar (Media/aggroMask.png); tinted by threat color.
+--- Frame size matches the PNG pixel size (1:1 UI units at scale 1) via GetFileWidth/GetFileHeight.
+function UF.EnsureThreatGlow(f)
+  if not f or f._threatGlowRoot then return end
+  if f.unit == "target" then return end
+  local h = f.health
+  if not h then return end
+
+  local root = CreateFrame("Frame", nil, f)
+  root:SetFrameStrata(f:GetFrameStrata())
+  local z = (f.GetFrameLevel and f:GetFrameLevel()) or 0
+  -- z+1: under f.health/f.power (z+2) and under f.healthPrediction (z+100); see UF.ApplyUnitFrameChildLevels.
+  root:SetFrameLevel(z + 1)
+  root:EnableMouse(false)
+  root:Hide()
+
+  local path = (ns.media and ns.media.aggroMask) or "Interface\\AddOns\\FlexxUI\\Media\\aggroMask.png"
+  local tex = root:CreateTexture(nil, "ARTWORK")
+  tex:SetTexture(path)
+  tex:SetBlendMode("BLEND")
+  local fw = tex.GetFileWidth and tex:GetFileWidth() or 0
+  local fh = tex.GetFileHeight and tex:GetFileHeight() or 0
+  if type(fw) ~= "number" or type(fh) ~= "number" or fw <= 0 or fh <= 0 then
+    fw, fh = 245, 70
+  end
+  root:SetSize(fw, fh)
+  tex:SetAllPoints()
+  root:SetPoint("CENTER", h, "CENTER", 0, 0)
+
+  f._threatGlowRoot = root
+  f._threatGlowTex = tex
+  if UF.ApplyUnitFrameChildLevels then UF.ApplyUnitFrameChildLevels(f) end
+end
+
+local function ThreatRgbForSituation(situation)
+  if GetThreatStatusColor then
+    local ok, r, g, b = pcall(function()
+      return GetThreatStatusColor(situation)
+    end)
+    if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+      return r, g, b
+    end
+  end
+  if situation == 3 then return 1, 0.2, 0.2 end
+  if situation == 2 then return 1, 0.5, 0.2 end
+  if situation == 1 then return 0.95, 0.9, 0.3 end
+  return 0.7, 0.7, 0.7
+end
+
+function UF.UpdateThreatGlow(f)
+  if not f then return end
+  if f.unit == "target" then return end
+  UF.EnsureThreatGlow(f)
+  local root = f._threatGlowRoot
+  local tex = f._threatGlowTex
+  if not root or not tex then return end
+  if UnitIsDeadOrGhost("player") then
+    root:Hide()
+    return
+  end
+
+  local ok, situation = pcall(function()
+    return UnitThreatSituation("player")
+  end)
+  if not ok or situation == nil then
+    root:Hide()
+    return
+  end
+  local sn = situation
+  if type(sn) ~= "number" or sn <= 0 then
+    root:Hide()
+    return
+  end
+
+  local r, g, b = ThreatRgbForSituation(sn)
+  local a = 0.55 + sn * 0.12
+  if sn == 3 then a = a + 0.1 end
+  a = math.min(0.95, a)
+  tex:SetVertexColor(r, g, b, a)
+  root:Show()
+end

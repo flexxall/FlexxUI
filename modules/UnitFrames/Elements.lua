@@ -66,12 +66,18 @@ function UF.CoerceNumber(val)
   return nil
 end
 
+--- UnitHealth / UnitHealthMax may return secret numbers: never compare them to literals outside pcall (runtime error).
+--- UnitHealthMax can be 0 briefly after targeting; StatusBar needs max > 0 — clamp max only inside pcall.
 function UF.GetUnitHealthValues(unit)
-  local cur = UnitHealth(unit)
-  local max = UnitHealthMax(unit)
-  if cur == nil then cur = 0 end
-  if max == nil then max = 1 end
-  return cur, max
+  local cur, maxH = 0, 1
+  pcall(function()
+    cur = UnitHealth(unit)
+    maxH = UnitHealthMax(unit)
+  end)
+  pcall(function()
+    if maxH == nil or maxH <= 0 then maxH = 1 end
+  end)
+  return cur, maxH
 end
 
 local function ParseDigitsString(s)
@@ -247,10 +253,10 @@ function UF.ApplyUnitFrameNameAndHealthLayout(f)
 
   f.healthText:ClearAllPoints()
   if align == "center" then
-    f.healthText:SetPoint("CENTER", f.health, "CENTER", 0, -5)
+    f.healthText:SetPoint("CENTER", f.health, "CENTER", 0, -1)
     f.healthText:SetJustifyH("CENTER")
   else
-    f.healthText:SetPoint("RIGHT", f.health, "RIGHT", -6, -5)
+    f.healthText:SetPoint("RIGHT", f.health, "RIGHT", -6, -1)
     f.healthText:SetJustifyH("RIGHT")
   end
 end
@@ -896,6 +902,11 @@ function UF.UpdateUnitFrame(f)
   UF.UpdateHealthText(f, hp, maxHp)
   UF.UpdateHealthBarOverlays(f)
   UF.UpdatePowerBar(f)
-  if f.unit == "player" then UF.UpdatePlayerResting(f) end
+  if f.unit == "player" then
+    UF.UpdatePlayerResting(f)
+    UF.UpdatePlayerLowHealthChrome(f)
+  end
+  UF.UpdateThreatGlow(f)
+  if UF.UpdateUnitAuras then UF.UpdateUnitAuras(f) end
 end
 

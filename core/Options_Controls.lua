@@ -18,6 +18,7 @@ function O.MakeFlatButton(parent, text, w, h, onClick)
   b:SetScript("OnEnter", function(self) self:SetBackdropColor(0.18, 0.24, 0.34, 0.96) end)
   b:SetScript("OnLeave", function(self) self:SetBackdropColor(0.14, 0.18, 0.25, 0.96) end)
   b:SetScript("OnClick", onClick)
+  b.Label = label
   return b
 end
 
@@ -131,14 +132,17 @@ function O.MakeUnitNavButton(parent, text, key)
   return b
 end
 
---- Horizontal sub-tabs inside Unit Frames → Player (health / resource / class bar / cast / name).
+--- Horizontal sub-tabs inside Unit Frames → Player (health / resource / class bar / auras / cast / name).
 function O.MakePlayerSubTabButton(parent, text, key, anchorTo)
-  local w, h = 112, 24
+  -- Narrow so six tabs fit the options panel; gap between buttons (see SetPoint below).
+  local w, h = 92, 24
   local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
   b:SetSize(w, h)
   O.StyleSurface(b, 0.96)
   local label = (ns.Fonts and ns.Fonts.CreateFontString(b, "OVERLAY", "GameFontNormalSmall", "all")) or b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   label:SetPoint("CENTER")
+  label:SetWidth(w - 6)
+  label:SetMaxLines(1)
   label:SetText(text or "")
 
   function b:RefreshPlayerSub()
@@ -166,12 +170,58 @@ function O.MakePlayerSubTabButton(parent, text, key, anchorTo)
   end)
 
   if anchorTo then
-    b:SetPoint("LEFT", anchorTo, "RIGHT", 6, 0)
+    b:SetPoint("LEFT", anchorTo, "RIGHT", 4, 0)
   else
     b:SetPoint("TOPLEFT", 0, 0)
   end
   O.state.playerSubTabButtons[key] = b
   b:RefreshPlayerSub()
+  return b
+end
+
+--- Horizontal sub-tabs inside Unit Frames → Target (frame vs cast bar).
+function O.MakeTargetSubTabButton(parent, text, key, anchorTo)
+  local w, h = 92, 24
+  local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+  b:SetSize(w, h)
+  O.StyleSurface(b, 0.96)
+  local label = (ns.Fonts and ns.Fonts.CreateFontString(b, "OVERLAY", "GameFontNormalSmall", "all")) or b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  label:SetPoint("CENTER")
+  label:SetWidth(w - 6)
+  label:SetMaxLines(1)
+  label:SetText(text or "")
+
+  function b:RefreshTargetSub()
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsTargetSubTab) or "frame"
+    local active = sub == key
+    if active then
+      b:SetBackdropColor(0.22, 0.30, 0.44, 0.96)
+    else
+      b:SetBackdropColor(0.14, 0.18, 0.25, 0.96)
+    end
+  end
+
+  b:SetScript("OnEnter", function(self)
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsTargetSubTab) or "frame"
+    local active = sub == key
+    if active then
+      self:SetBackdropColor(0.26, 0.34, 0.48, 0.96)
+    else
+      self:SetBackdropColor(0.18, 0.24, 0.34, 0.96)
+    end
+  end)
+  b:SetScript("OnLeave", function(self) self:RefreshTargetSub() end)
+  b:SetScript("OnClick", function()
+    if O.SelectTargetSubTab then O.SelectTargetSubTab(key) end
+  end)
+
+  if anchorTo then
+    b:SetPoint("LEFT", anchorTo, "RIGHT", 4, 0)
+  else
+    b:SetPoint("TOPLEFT", 0, 0)
+  end
+  O.state.targetSubTabButtons[key] = b
+  b:RefreshTargetSub()
   return b
 end
 
@@ -297,7 +347,6 @@ function O.MakeScalePercentSlider(parent, title, minPct, maxPct, stepPct, getSca
     setScale(v / 100)
     val:SetText(string.format("%d%%", math.floor(v + 0.5)))
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
   end)
 
   row.Refresh = function()
@@ -309,6 +358,105 @@ function O.MakeScalePercentSlider(parent, title, minPct, maxPct, stepPct, getSca
     val:SetText(string.format("%d%%", pct))
   end
   return row
+end
+
+--- Integer px slider (e.g. aura row nudge). getInt/setInt use whole numbers.
+function O.MakeIntSlider(parent, title, minV, maxV, stepV, getInt, setInt)
+  local row = CreateFrame("Frame", nil, parent)
+  row:SetSize(520, 58)
+  local fs = (ns.Fonts and ns.Fonts.CreateFontString(row, "ARTWORK", "GameFontHighlightSmall", "all")) or row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  fs:SetPoint("TOPLEFT", 0, 0)
+  fs:SetText(title)
+  local val = (ns.Fonts and ns.Fonts.CreateFontString(row, "ARTWORK", "GameFontNormalSmall", "all")) or row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  val:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -6)
+  val:SetText("0")
+
+  local slider = CreateFrame("Slider", nil, row)
+  slider:SetOrientation("HORIZONTAL")
+  slider:SetPoint("TOPLEFT", val, "BOTTOMLEFT", 0, -10)
+  slider:SetSize(300, 22)
+  local trackBg = slider:CreateTexture(nil, "BACKGROUND")
+  trackBg:SetTexture("Interface\\Buttons\\WHITE8x8")
+  trackBg:SetVertexColor(0.12, 0.16, 0.22, 1)
+  trackBg:SetPoint("LEFT", slider, "LEFT", 0, 0)
+  trackBg:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
+  trackBg:SetHeight(12)
+
+  slider:SetMinMaxValues(minV, maxV)
+  slider:SetValueStep(stepV or 1)
+  slider:SetObeyStepOnDrag(true)
+  slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+  local thumb = slider:GetThumbTexture()
+  if thumb then
+    thumb:SetSize(20, 20)
+  end
+
+  slider:SetScript("OnValueChanged", function(_, raw)
+    local v = math.max(minV, math.min(maxV, raw))
+    local st = stepV or 1
+    if st > 0 then
+      v = math.floor(v / st + 0.5) * st
+    end
+    setInt(v)
+    val:SetText(tostring(math.floor(v + 0.5)))
+  end)
+
+  row.Refresh = function()
+    local n = getInt()
+    if type(n) ~= "number" or n ~= n then n = minV end
+    n = math.max(minV, math.min(maxV, n))
+    local st = stepV or 1
+    if st > 0 then
+      n = math.floor(n / st + 0.5) * st
+    end
+    slider:SetValue(n)
+    val:SetText(tostring(math.floor(n + 0.5)))
+  end
+  return row
+end
+
+--- Left column on Dev Settings tab: Cast bars | Auras (same chrome as General → Settings).
+function O.MakeDevNavButton(parent, text, key, anchorTo)
+  local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+  b:SetSize(O.chromeButtonSize.w, O.chromeButtonSize.h)
+  O.StyleSurface(b, 0.96)
+  local label = (ns.Fonts and ns.Fonts.CreateFontString(b, "OVERLAY", "GameFontNormal", "all")) or b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  label:SetPoint("CENTER")
+  label:SetText(text or "")
+
+  function b:RefreshDevNav()
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsDevSubTab) or "cast"
+    local active = sub == key
+    if active then
+      b:SetBackdropColor(0.22, 0.30, 0.44, 0.96)
+    else
+      b:SetBackdropColor(0.14, 0.18, 0.25, 0.96)
+    end
+  end
+
+  b:SetScript("OnEnter", function(self)
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsDevSubTab) or "cast"
+    local active = sub == key
+    if active then
+      self:SetBackdropColor(0.26, 0.34, 0.48, 0.96)
+    else
+      self:SetBackdropColor(0.18, 0.24, 0.34, 0.96)
+    end
+  end)
+  b:SetScript("OnLeave", function(self) self:RefreshDevNav() end)
+  b:SetScript("OnClick", function()
+    if O.SelectDevSubTab then O.SelectDevSubTab(key) end
+  end)
+
+  if anchorTo then
+    b:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, -8)
+  else
+    b:SetPoint("TOPLEFT", 0, 0)
+  end
+  if not O.state.devNavButtons then O.state.devNavButtons = {} end
+  O.state.devNavButtons[key] = b
+  b:RefreshDevNav()
+  return b
 end
 
 function O.MakeTabButton(parent, text, key, anchorTo)
@@ -428,5 +576,116 @@ function O.CreateScrollablePage(parent, skipHolderBackdrop)
   holder.content = content
   holder.scrollbar = scrollbar
   return holder
+end
+
+--- Label + WoW-style select: one row shows the current choice; click opens a floating list.
+--- @param items { value: string, text: string }[]
+--- @param getValue fun(): string
+--- @param setValue fun(value: string)  -- should persist and call O.RefreshControls when appropriate
+function O.MakeEnumSelect(parent, label, items, getValue, setValue, width)
+  local w = width or 220
+  local row = CreateFrame("Frame", nil, parent)
+  row:SetSize(400, 52)
+
+  local lbl = (ns.Fonts and ns.Fonts.CreateFontString(row, "OVERLAY", "GameFontHighlightSmall", "all")) or row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  lbl:SetPoint("TOPLEFT", 0, 0)
+  lbl:SetText(label or "")
+
+  local btn = CreateFrame("Button", nil, row, "BackdropTemplate")
+  O.StyleSurface(btn, 0.96)
+  btn:SetSize(w, 28)
+  btn:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -6)
+
+  -- Modern clients often ship dropdown art as atlases; file-only paths can render invisible.
+  local chev = btn:CreateTexture(nil, "OVERLAY")
+  if chev.SetDrawLayer then chev:SetDrawLayer("OVERLAY", 2) end
+  chev:SetSize(16, 16)
+  chev:SetPoint("RIGHT", -6, 0)
+  local chevOk = chev.SetAtlas and pcall(chev.SetAtlas, chev, "common-dropdown-icon-back", true)
+  if chevOk then
+    -- Atlas is a "back" chevron; use +pi/2 so it points down (not up). Keep default atlas tint (yellow/gold).
+    chev:SetRotation(math.pi / 2)
+  else
+    chev:SetTexture("Interface\\Buttons\\UI-ScrollBar-ArrowButton-Down-Up")
+    chev:SetVertexColor(0.82, 0.86, 0.92)
+  end
+
+  local txt = (ns.Fonts and ns.Fonts.CreateFontString(btn, "OVERLAY", "GameFontHighlightSmall", "all")) or btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  txt:SetPoint("LEFT", 10, 0)
+  txt:SetPoint("RIGHT", chev, "LEFT", -6, 0)
+  txt:SetJustifyH("LEFT")
+
+  local list = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+  list:SetFrameStrata("FULLSCREEN_DIALOG")
+  list:SetFrameLevel(5000)
+  list:Hide()
+  O.StyleSurface(list, 0.98)
+
+  local overlay = CreateFrame("Button", nil, UIParent)
+  overlay:SetFrameStrata("FULLSCREEN_DIALOG")
+  overlay:SetFrameLevel(4999)
+  overlay:SetAllPoints(UIParent)
+  overlay:SetAlpha(0)
+  overlay:EnableMouse(true)
+  overlay:Hide()
+  overlay:SetScript("OnClick", function()
+    list:Hide()
+    overlay:Hide()
+  end)
+
+  local function labelForValue(v)
+    for _, it in ipairs(items) do
+      if it.value == v then return it.text end
+    end
+    return (items[1] and items[1].text) or ""
+  end
+
+  local rowH = 26
+  local pad = 4
+  local n = #items
+  list:SetSize(w, pad * 2 + n * rowH)
+
+  for i, it in ipairs(items) do
+    local opt = CreateFrame("Button", nil, list, "BackdropTemplate")
+    opt:SetSize(w - pad * 2, rowH - 2)
+    opt:SetPoint("TOPLEFT", pad, -pad - (i - 1) * rowH)
+    O.StyleSurface(opt, 0.88)
+    opt:SetBackdropColor(0.12, 0.16, 0.22, 0.95)
+    local ost = (ns.Fonts and ns.Fonts.CreateFontString(opt, "OVERLAY", "GameFontHighlightSmall", "all")) or opt:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ost:SetPoint("LEFT", 8, 0)
+    ost:SetText(it.text)
+    opt:SetScript("OnEnter", function(self) self:SetBackdropColor(0.18, 0.24, 0.32, 0.98) end)
+    opt:SetScript("OnLeave", function(self) self:SetBackdropColor(0.12, 0.16, 0.22, 0.95) end)
+    opt:SetScript("OnClick", function()
+      setValue(it.value)
+      list:Hide()
+      overlay:Hide()
+    end)
+  end
+
+  btn:SetScript("OnClick", function()
+    if list:IsShown() then
+      list:Hide()
+      overlay:Hide()
+      return
+    end
+    txt:SetText(labelForValue(getValue()))
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+    overlay:Show()
+    list:Show()
+  end)
+
+  function row:Refresh()
+    txt:SetText(labelForValue(getValue()))
+  end
+
+  row:SetScript("OnHide", function()
+    list:Hide()
+    overlay:Hide()
+  end)
+
+  row:Refresh()
+  return row
 end
 

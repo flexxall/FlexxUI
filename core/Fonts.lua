@@ -85,6 +85,16 @@ function F.CreateFontString(parent, layer, templateName, scope)
   return fs
 end
 
+--- After base font apply; survives preset/scale changes (e.g. resting "zzz" middle letter).
+local function applyFontExtraSize(fs)
+  local d = fs and fs._flexxFontExtraSize
+  if not d or type(d) ~= "number" or d == 0 then return end
+  local ok, path, size, flags = pcall(function() return fs:GetFont() end)
+  if ok and path and type(size) == "number" then
+    pcall(function() fs:SetFont(path, size + d, flags or "") end)
+  end
+end
+
 local function applyToBucket(bucket, presetKey, scale)
   F.EnsureDB()
   scale = clampScale(scale)
@@ -106,6 +116,7 @@ local function applyToBucket(bucket, presetKey, scale)
           local sz = (preset[cat] or preset.medium or 12) * scale
           pcall(function() fs:SetFont(preset.file, sz, "") end)
         end
+        applyFontExtraSize(fs)
       end
     end
   end

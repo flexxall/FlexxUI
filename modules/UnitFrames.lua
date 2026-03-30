@@ -95,9 +95,14 @@ function UF.EnsureDB()
   end
   if _G.FlexxUIDB.powerTextAlign == nil then _G.FlexxUIDB.powerTextAlign = "center" end
   if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "default" end
+  if _G.FlexxUIDB.powerBarLayout == nil then _G.FlexxUIDB.powerBarLayout = "full" end
+  if _G.FlexxUIDB.powerBarLayout ~= "full" and _G.FlexxUIDB.powerBarLayout ~= "inset" then
+    _G.FlexxUIDB.powerBarLayout = "full"
+  end
   if _G.FlexxUIDB.classBarColorStyle == nil then _G.FlexxUIDB.classBarColorStyle = "default" end
+  if UF.EnsureAuraDB then UF.EnsureAuraDB() end
   if _G.FlexxUIDB.castBarFillStyle == nil then _G.FlexxUIDB.castBarFillStyle = "default" end
-  if _G.FlexxUIDB.outputLogWindowOpen == nil then _G.FlexxUIDB.outputLogWindowOpen = false end
   if _G.FlexxUIDB.optionsPlayerSubTab == nil then _G.FlexxUIDB.optionsPlayerSubTab = "health" end
+  if _G.FlexxUIDB.optionsTargetSubTab == nil then _G.FlexxUIDB.optionsTargetSubTab = "frame" end
 end
 

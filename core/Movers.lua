@@ -69,11 +69,17 @@ function ns.Movers.MakeMovable(key, frame, defaultPoint)
 
   frame:SetScript("OnDragStart", function(self)
     if IsLocked() then return end
-    self:StartMoving()
+    -- Moving frames while combat lockdown is active can trigger "Interface action failed" with no Lua error.
+    if InCombatLockdown() then return end
+    pcall(function()
+      self:StartMoving()
+    end)
   end)
 
   frame:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
+    pcall(function()
+      self:StopMovingOrSizing()
+    end)
     SavePoint(key, self)
   end)
 end
@@ -81,6 +87,26 @@ end
 function ns.Movers.Restore(key, frame, defaultPoint)
   if not key or not frame then return end
   RestorePoint(key, frame, defaultPoint)
+end
+
+--- Remove one mover entry from saved layout (other frames unchanged).
+function ns.Movers.ClearSavedPosition(key)
+  EnsureLayoutDB()
+  if key and _G.FlexxUILayout.movers then
+    _G.FlexxUILayout.movers[key] = nil
+  end
+end
+
+--- Clear saved position for this key and apply defaultPoint immediately (no reload).
+function ns.Movers.ResetToDefault(key, frame, defaultPoint)
+  if not key or not frame then return end
+  ns.Movers.ClearSavedPosition(key)
+  frame:ClearAllPoints()
+  if defaultPoint then
+    frame:SetPoint(unpack(defaultPoint))
+  else
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  end
 end
 
 --- Clear all saved anchor data; frames use built-in defaults on next reload. Does not touch FlexxUIDB options.

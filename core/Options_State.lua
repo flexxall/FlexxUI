@@ -12,10 +12,14 @@ O.state = O.state or {
   unitFrameHolders = {},
   playerSubTabButtons = {},
   applyPlayerSubTab = nil,
+  targetSubTabButtons = {},
+  applyTargetSubTab = nil,
   generalNavButtons = {},
   fontsSubTabButtons = {},
   applyGeneralSubTab = nil,
   applyFontsSubTab = nil,
+  devNavButtons = {},
+  applyDevSubTab = nil,
 }
 
 function O.EnsureDB()
@@ -56,14 +60,17 @@ function O.EnsureDB()
   end
   if _G.FlexxUIDB.powerTextAlign == nil then _G.FlexxUIDB.powerTextAlign = "center" end
   if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "default" end
+  if _G.FlexxUIDB.powerBarLayout == nil then _G.FlexxUIDB.powerBarLayout = "full" end
+  if _G.FlexxUIDB.powerBarLayout ~= "full" and _G.FlexxUIDB.powerBarLayout ~= "inset" then
+    _G.FlexxUIDB.powerBarLayout = "full"
+  end
   if _G.FlexxUIDB.classBarColorStyle == nil then _G.FlexxUIDB.classBarColorStyle = "default" end
   if _G.FlexxUIDB.castBarFillStyle == nil then _G.FlexxUIDB.castBarFillStyle = "default" end
-  if _G.FlexxUIDB.outputLogWindowOpen == nil then _G.FlexxUIDB.outputLogWindowOpen = false end
   if _G.FlexxUIDB.optionsUnitSubTab == nil then _G.FlexxUIDB.optionsUnitSubTab = "player" end
   if _G.FlexxUIDB.optionsPlayerSubTab == nil then _G.FlexxUIDB.optionsPlayerSubTab = "health" end
+  if _G.FlexxUIDB.optionsTargetSubTab == nil then _G.FlexxUIDB.optionsTargetSubTab = "frame" end
   if _G.FlexxUIDB.castBarEnabled == nil then _G.FlexxUIDB.castBarEnabled = true end
   if _G.FlexxUIDB.castBarShowIdle == nil then _G.FlexxUIDB.castBarShowIdle = false end
-  if _G.FlexxUIDB.castBarLayoutPreview == nil then _G.FlexxUIDB.castBarLayoutPreview = false end
   if _G.FlexxUIDB.castBarTargetEnabled == nil then _G.FlexxUIDB.castBarTargetEnabled = true end
   if _G.FlexxUIDB.castBarTargetShowIdle == nil then _G.FlexxUIDB.castBarTargetShowIdle = false end
   if _G.FlexxUIDB.hideBlizzardCastBar == nil then _G.FlexxUIDB.hideBlizzardCastBar = false end
@@ -71,6 +78,11 @@ function O.EnsureDB()
   if ns.Fonts and ns.Fonts.EnsureDB then ns.Fonts.EnsureDB() end
   if _G.FlexxUIDB.optionsGeneralSubTab == nil then _G.FlexxUIDB.optionsGeneralSubTab = "settings" end
   if _G.FlexxUIDB.optionsFontsSubTab == nil then _G.FlexxUIDB.optionsFontsSubTab = "ui" end
+  if _G.FlexxUIDB.optionsDevSubTab == nil and _G.FlexxUIDB.optionsDebugSubTab ~= nil then
+    _G.FlexxUIDB.optionsDevSubTab = _G.FlexxUIDB.optionsDebugSubTab
+  end
+  if _G.FlexxUIDB.optionsDevSubTab == nil then _G.FlexxUIDB.optionsDevSubTab = "cast" end
+  if ns.UnitFrames and ns.UnitFrames.EnsureAuraDB then ns.UnitFrames.EnsureAuraDB() end
 end
 
 function O.StyleSurface(frame, alpha)
@@ -110,7 +122,7 @@ end
 
 function O.SelectPlayerSubTab(subKey)
   O.EnsureDB()
-  if subKey ~= "health" and subKey ~= "power" and subKey ~= "classbar" and subKey ~= "cast" and subKey ~= "general" then
+  if subKey ~= "health" and subKey ~= "power" and subKey ~= "classbar" and subKey ~= "auras" and subKey ~= "cast" and subKey ~= "general" then
     subKey = "health"
   end
   _G.FlexxUIDB.optionsPlayerSubTab = subKey
@@ -119,6 +131,21 @@ function O.SelectPlayerSubTab(subKey)
   end
   if O.state.applyPlayerSubTab then
     O.state.applyPlayerSubTab()
+  end
+  O.RefreshScrollPages()
+end
+
+function O.SelectTargetSubTab(subKey)
+  O.EnsureDB()
+  if subKey ~= "frame" and subKey ~= "cast" then
+    subKey = "frame"
+  end
+  _G.FlexxUIDB.optionsTargetSubTab = subKey
+  for _, btn in pairs(O.state.targetSubTabButtons) do
+    if btn and btn.RefreshTargetSub then btn:RefreshTargetSub() end
+  end
+  if O.state.applyTargetSubTab then
+    O.state.applyTargetSubTab()
   end
   O.RefreshScrollPages()
 end
@@ -137,6 +164,9 @@ function O.SelectUnitSubTab(subKey)
   end
   if subKey == "player" and O.state.applyPlayerSubTab then
     O.state.applyPlayerSubTab()
+  end
+  if subKey == "target" and O.state.applyTargetSubTab then
+    O.state.applyTargetSubTab()
   end
   O.RefreshScrollPages()
 end
@@ -171,6 +201,21 @@ function O.SelectFontsSubTab(subKey)
   O.RefreshScrollPages()
 end
 
+function O.SelectDevSubTab(subKey)
+  O.EnsureDB()
+  if subKey ~= "cast" and subKey ~= "auras" then
+    subKey = "cast"
+  end
+  _G.FlexxUIDB.optionsDevSubTab = subKey
+  for _, btn in pairs(O.state.devNavButtons or {}) do
+    if btn and btn.RefreshDevNav then btn:RefreshDevNav() end
+  end
+  if O.state.applyDevSubTab then
+    O.state.applyDevSubTab()
+  end
+  O.RefreshScrollPages()
+end
+
 function O.SelectTab(tabKey)
   for key, holder in pairs(O.state.pageHolders) do
     holder:SetShown(key == tabKey)
@@ -184,10 +229,19 @@ function O.SelectTab(tabKey)
     end
   end
   if tabKey == "unit" then
-    O.SelectUnitSubTab(_G.FlexxUIDB.optionsUnitSubTab or "player")
+    O.EnsureDB()
+    _G.FlexxUIDB.optionsUnitSubTab = "player"
+    _G.FlexxUIDB.optionsPlayerSubTab = "health"
+    O.SelectUnitSubTab("player")
+    if O.SelectPlayerSubTab then
+      O.SelectPlayerSubTab("health")
+    end
   end
   if tabKey == "general" and O.state.applyGeneralSubTab then
     O.state.applyGeneralSubTab()
+  end
+  if tabKey == "dev" and O.state.applyDevSubTab then
+    O.state.applyDevSubTab()
   end
   O.RefreshScrollPages()
 end

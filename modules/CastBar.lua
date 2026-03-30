@@ -6,17 +6,31 @@ ns.CastBar = CB
 
 CB.state = CB.state or {}
 
--- 245px frame, 10px horizontal inset each side → 225px wide; power bar height = 10.
+-- Bar fill width 225px (matches unit power bar). Optional spell icon on the left.
 local CAST_BAR_W = 225
 local CAST_BAR_H = 10
+local CAST_ICON_SIZE = 10
+local CAST_ICON_GAP = 2
+local CAST_FRAME_W = CAST_ICON_SIZE + CAST_ICON_GAP + CAST_BAR_W
+--- TOPLEFT→unit BOTTOMLEFT Y offset. Positive moves the cast bar up on screen (tighter under the frame). Ignored until you reset a saved drag position (layout DB overrides defaults).
+local CAST_BAR_UF_Y_OFFSET = 10
+--- Same horizontal inset as the health bar (Frames.lua: health BOTTOMLEFT x from unit frame).
+local UNIT_FRAME_HEALTH_INSET = 10
+--- X offset for the cast bar *frame* TOPLEFT→unit BOTTOMLEFT so the **status bar fill** (right of icon+gap) lines up with the health bar left — not the outer frame, which includes the spell icon on the left.
+local CAST_BAR_FRAME_ANCHOR_X = UNIT_FRAME_HEALTH_INSET - CAST_ICON_SIZE - CAST_ICON_GAP
 
 local UF = ns.UnitFrames
 
 function CB.EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
+  -- Legacy: layout preview duplicated "show empty bar"; migrate once.
+  if _G.FlexxUIDB.castBarLayoutPreview then
+    _G.FlexxUIDB.castBarShowIdle = true
+    _G.FlexxUIDB.castBarTargetShowIdle = true
+    _G.FlexxUIDB.castBarLayoutPreview = nil
+  end
   if _G.FlexxUIDB.castBarEnabled == nil then _G.FlexxUIDB.castBarEnabled = true end
   if _G.FlexxUIDB.castBarShowIdle == nil then _G.FlexxUIDB.castBarShowIdle = false end
-  if _G.FlexxUIDB.castBarLayoutPreview == nil then _G.FlexxUIDB.castBarLayoutPreview = false end
   if _G.FlexxUIDB.castBarTargetEnabled == nil then _G.FlexxUIDB.castBarTargetEnabled = true end
   if _G.FlexxUIDB.castBarTargetShowIdle == nil then _G.FlexxUIDB.castBarTargetShowIdle = false end
   if _G.FlexxUIDB.hideBlizzardCastBar == nil then _G.FlexxUIDB.hideBlizzardCastBar = false end
@@ -42,37 +56,110 @@ end
 
 local function ApplyHideBlizzardCastBar()
   CB.EnsureDB()
+  local hide = _G.FlexxUIDB.hideBlizzardCastBar
+
   local bar = _G.PlayerCastingBar
-  if not bar or not bar.HookScript then return end
-  if _G.FlexxUIDB.hideBlizzardCastBar then
-    bar:Hide()
-    if not bar._flexxUICastHook then
-      bar._flexxUICastHook = true
-      bar:HookScript("OnShow", function(self)
-        if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar then
-          self:Hide()
+  if bar and bar.HookScript then
+    if hide then
+      bar:Hide()
+      if not bar._flexxUICastHook then
+        bar._flexxUICastHook = true
+        bar:HookScript("OnShow", function(self)
+          if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar then
+            self:Hide()
+          end
+        end)
+      end
+    else
+      bar:Show()
+    end
+  end
+
+  -- Default target cast UI (also used by other addons); hiding avoids duplicate bars with FlexxUI target cast and reduces taint issues in Blizzard CastingBarFrame.
+  local tbar = _G.TargetFrameSpellBar
+  if tbar and tbar.HookScript then
+    if hide then
+      tbar:Hide()
+      if not tbar._flexxUITargetCastHook then
+        tbar._flexxUITargetCastHook = true
+        tbar:HookScript("OnShow", function(self)
+          if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar then
+            self:Hide()
+          end
+        end)
+      end
+    else
+      pcall(function()
+        if _G.TargetFrame_Update and _G.TargetFrame then
+          _G.TargetFrame_Update(_G.TargetFrame)
         end
       end)
     end
-  else
-    bar:Show()
   end
 end
 
 --- Cast APIs may return secret values on Retail; never do Lua math on raw returns.
+--- spellId is the 9th return; icon file id/path is the 3rd return (texture) from UnitCastingInfo / UnitChannelInfo.
 local function GetUnitCast(unit)
   if unit == "target" and (not UnitExists("target")) then
     return nil
   end
-  local ok, name, _, _, startMS, endMS = pcall(UnitCastingInfo, unit)
+  local ok, name, _text, iconTexture, startMS, endMS, _trade, _cid, _nintr, spellId = pcall(UnitCastingInfo, unit)
   if ok and name then
-    return "cast", name, startMS, endMS
+    return "cast", name, startMS, endMS, spellId, iconTexture
   end
-  ok, name, _, _, startMS, endMS = pcall(UnitChannelInfo, unit)
+  ok, name, _text, iconTexture, startMS, endMS, _trade, _cid, _nintr, spellId = pcall(UnitChannelInfo, unit)
   if ok and name then
-    return "channel", name, startMS, endMS
+    return "channel", name, startMS, endMS, spellId, iconTexture
   end
   return nil
+end
+
+local function SetCastBarSpellIcon(self, spellId, iconTextureFromApi)
+  local tex = self.spellIcon
+  if not tex then return end
+  local path
+  if spellId then
+    if C_Spell and C_Spell.GetSpellTexture then
+      local ok, t = pcall(function()
+        return C_Spell.GetSpellTexture(spellId)
+      end)
+      if ok and t then path = t end
+    end
+    if not path and GetSpellTexture then
+      local ok, t = pcall(GetSpellTexture, spellId)
+      if ok and t then path = t end
+    end
+  end
+  if not path and iconTextureFromApi then
+    path = iconTextureFromApi
+  end
+  if path then
+    tex:SetTexture(path)
+    tex:Show()
+  else
+    tex:Hide()
+  end
+end
+
+-- Fishing is a channel; bar should deplete (count down) instead of filling like other channels.
+local FISHING_SPELL_IDS = {
+  [7620] = true, -- Fishing (classic / retail base spell; variants may differ by expansion)
+}
+
+local function IsFishingChannel(spellId, name)
+  if spellId and FISHING_SPELL_IDS[spellId] then
+    return true
+  end
+  -- Name from UnitCastingInfo/UnitChannelInfo may be a secret string: no :lower() / :find().
+  if name == nil then return false end
+  local ok, fishing = pcall(function()
+    local n = tostring(name)
+    if n == "" then return false end
+    n = string.lower(n)
+    return string.find(n, "fishing", 1, true) ~= nil
+  end)
+  return ok and fishing == true
 end
 
 local function ComputeCastProgress(startMS, endMS)
@@ -148,6 +235,7 @@ local function ApplyIdle(self)
   self.bar:SetStatusBarColor(0.22, 0.22, 0.26)
   self.nameText:SetText("")
   self.timeText:SetText("")
+  if self.spellIcon then self.spellIcon:Hide() end
   ApplyCastTextColor(self)
   self:Show()
 end
@@ -182,13 +270,13 @@ local function UpdateCastBarFrame(self)
     return
   end
 
-  local kind, name, startMS, endMS = GetUnitCast(unit)
+  local kind, name, startMS, endMS, spellId, iconTexture = GetUnitCast(unit)
   if not kind then
     local showIdle
     if unit == "player" then
-      showIdle = _G.FlexxUIDB.castBarShowIdle or _G.FlexxUIDB.castBarLayoutPreview
+      showIdle = _G.FlexxUIDB.castBarShowIdle == true
     else
-      showIdle = (_G.FlexxUIDB.castBarTargetShowIdle or _G.FlexxUIDB.castBarLayoutPreview) and UnitExists("target")
+      showIdle = _G.FlexxUIDB.castBarTargetShowIdle == true and UnitExists("target")
     end
     if showIdle then
       ApplyIdle(self)
@@ -201,7 +289,12 @@ local function UpdateCastBarFrame(self)
   local p, remain = ComputeCastProgress(startMS, endMS)
 
   self.bar:SetMinMaxValues(0, 1)
-  self.bar:SetValue(p)
+  -- Fishing channel: show remaining time as a shrinking bar (same progress math, inverted fill).
+  local fill = p
+  if kind == "channel" and IsFishingChannel(spellId, name) then
+    fill = 1 - p
+  end
+  self.bar:SetValue(fill)
 
   SetCastNameText(self.nameText, name)
   local okFmt, timeStr = pcall(function()
@@ -218,6 +311,7 @@ local function UpdateCastBarFrame(self)
   end
 
   ApplyCastTextColor(self)
+  SetCastBarSpellIcon(self, spellId, iconTexture)
   self:Show()
 end
 
@@ -239,23 +333,54 @@ function CB.RefreshFromOptions()
   ApplyHideBlizzardCastBar()
 end
 
---- Toggle dev layout preview (empty bars visible for dragging). Returns new state.
-function CB.ToggleLayoutPreview()
-  CB.EnsureDB()
-  _G.FlexxUIDB.castBarLayoutPreview = not _G.FlexxUIDB.castBarLayoutPreview
-  CB.RefreshFromOptions()
-  return _G.FlexxUIDB.castBarLayoutPreview
+--- Default anchor for player or target cast bar (same rules as initial Create).
+function CB.GetDefaultCastBarPoint(unit)
+  if not UF then
+    return unit == "target" and { "CENTER", UIParent, "CENTER", 0, -180 } or { "CENTER", UIParent, "CENTER", 0, -120 }
+  end
+  if unit == "player" then
+    local playerUF = UF.state and UF.state.frames and UF.state.frames.player
+    return playerUF and { "TOPLEFT", playerUF, "BOTTOMLEFT", CAST_BAR_FRAME_ANCHOR_X, CAST_BAR_UF_Y_OFFSET }
+      or { "CENTER", UIParent, "CENTER", 0, -120 }
+  end
+  if unit == "target" then
+    local targetUF = UF.state and UF.state.frames and UF.state.frames.target
+    return targetUF and { "TOPLEFT", targetUF, "BOTTOMLEFT", CAST_BAR_FRAME_ANCHOR_X, CAST_BAR_UF_Y_OFFSET }
+      or { "CENTER", UIParent, "CENTER", 0, -180 }
+  end
+  return { "CENTER", UIParent, "CENTER", 0, 0 }
+end
+
+--- Reset one cast bar's saved position to the current default (does not affect other movers or options).
+function CB.ResetCastBarPosition(unit)
+  if unit ~= "player" and unit ~= "target" then return end
+  local key = unit == "target" and "castbar_target" or "castbar"
+  local frame = unit == "target" and CB.state.frameTarget or CB.state.frame
+  if not frame then return end
+  local def = CB.GetDefaultCastBarPoint(unit)
+  if ns.Movers and ns.Movers.ResetToDefault then
+    ns.Movers.ResetToDefault(key, frame, def)
+  else
+    frame:ClearAllPoints()
+    frame:SetPoint(unpack(def))
+  end
 end
 
 local function CreateCastBarUnitFrame(unit, moverKey, defaultPoint)
   local frameName = unit == "player" and "FlexxUI_CastBar" or "FlexxUI_CastBarTarget"
   local f = CreateFrame("Frame", frameName, UIParent)
   f.watchUnit = unit
-  f:SetSize(CAST_BAR_W, CAST_BAR_H)
+  f:SetSize(CAST_FRAME_W, CAST_BAR_H)
+
+  f.spellIcon = f:CreateTexture(nil, "ARTWORK")
+  f.spellIcon:SetSize(CAST_ICON_SIZE, CAST_ICON_SIZE)
+  f.spellIcon:SetPoint("LEFT", f, "LEFT", 0, 0)
+  f.spellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  f.spellIcon:Hide()
 
   f.bar = UF.CreatePowerBar(f, CAST_BAR_W, CAST_BAR_H)
   f.bar._flexxBarRole = "cast"
-  f.bar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+  f.bar:SetPoint("TOPLEFT", f, "TOPLEFT", CAST_ICON_SIZE + CAST_ICON_GAP, 0)
   f.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
   f.bar:EnableMouse(false)
 
@@ -325,13 +450,8 @@ function CB.Create()
   if CB.state.frame then return end
   if not UF or not UF.CreatePowerBar then return end
 
-  local playerUF = UF.state and UF.state.frames and UF.state.frames.player
-  local defaultPlayer = playerUF and { "TOPLEFT", playerUF, "BOTTOMLEFT", 0, -10 } or { "CENTER", UIParent, "CENTER", 0, -140 }
-  CB.state.frame = CreateCastBarUnitFrame("player", "castbar", defaultPlayer)
-
-  local targetUF = UF.state and UF.state.frames and UF.state.frames.target
-  local defaultTarget = targetUF and { "TOPLEFT", targetUF, "BOTTOMLEFT", 0, -10 } or { "CENTER", UIParent, "CENTER", 0, -200 }
-  CB.state.frameTarget = CreateCastBarUnitFrame("target", "castbar_target", defaultTarget)
+  CB.state.frame = CreateCastBarUnitFrame("player", "castbar", CB.GetDefaultCastBarPoint("player"))
+  CB.state.frameTarget = CreateCastBarUnitFrame("target", "castbar_target", CB.GetDefaultCastBarPoint("target"))
 
   CB.EnsureDB()
   UpdateCastBarFrame(CB.state.frame)

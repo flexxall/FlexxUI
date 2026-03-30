@@ -3,9 +3,11 @@ local _, ns = ...
 ns.DB = ns.DB or {}
 
 ns.DB.Defaults = {
-  enabled = true,
   locked = false,
   hideBlizzard = false,
+  --- Minimap launcher: show/hide and angle (degrees) on the minimap ring; legacy X/Y migrates on load.
+  minimapButtonShow = true,
+  minimapButtonAngle = 177,
   healthBarTexture = "default",
   playerHealthColorMode = "class",
   healthTextMode = "percent",
@@ -21,6 +23,8 @@ ns.DB.Defaults = {
   powerTextColorResource = "white",
   powerTextAlign = "center",
   powerBarColorStyle = "default",
+  --- full = resource bar below health (default). inset = thin bar overlapping bottom edge of health.
+  powerBarLayout = "full",
   --- Top class resource pips (combo, holy power, chi, etc.): default bright class tint vs muted dark.
   classBarColorStyle = "default",
   castBarFillStyle = "default",
@@ -30,12 +34,16 @@ ns.DB.Defaults = {
   -- Dark panel behind player/target unit frames (dialog backdrop fill).
   unitFrameBackdropShow = true,
   showSecondaryResource = true,
-  outputLogWindowOpen = false,
+  --- Player / target unit frame auras are separate (Auras.lua). Legacy unitFrameAura* mirror player for older API.
+  playerAuraBuffs = true,
+  targetAuraBuffs = true,
+  playerAuraDebuffDisplay = "icons",
+  targetAuraDebuffDisplay = "icons",
   optionsUnitSubTab = "player",
   optionsPlayerSubTab = "health",
+  optionsTargetSubTab = "frame",
   castBarEnabled = true,
   castBarShowIdle = false,
-  castBarLayoutPreview = false,
   castBarTargetEnabled = true,
   castBarTargetShowIdle = false,
   hideBlizzardCastBar = false,
@@ -43,6 +51,19 @@ ns.DB.Defaults = {
   castBarTextColorMode = "light",
   optionsGeneralSubTab = "settings",
   optionsFontsSubTab = "ui",
+  optionsDevSubTab = "cast",
+  --- Aura layout (px): BOTTOMLEFT of row → TOPLEFT of health. Per-unit; legacy unitFrameAura*Anchor* migrate on load.
+  playerAuraBuffAnchorX = 0,
+  playerAuraBuffAnchorY = 36,
+  playerAuraDebuffAnchorX = 0,
+  playerAuraDebuffAnchorY = 4,
+  targetAuraBuffAnchorX = 0,
+  targetAuraBuffAnchorY = 36,
+  targetAuraDebuffAnchorX = 0,
+  targetAuraDebuffAnchorY = 4,
+  unitFrameAuraDevPreviewBuff = false,
+  unitFrameAuraDevPreviewDebuff = false,
+  unitFrameAuraDevPreviewBars = false,
 }
 
 local function DeepCopy(src)

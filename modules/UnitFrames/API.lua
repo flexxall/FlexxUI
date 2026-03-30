@@ -38,6 +38,53 @@ function UF.SetPowerBarColorStyle(style)
   return true
 end
 
+function UF.SetPowerBarLayout(layout)
+  UF.EnsureDB()
+  if layout ~= "full" and layout ~= "inset" then return false end
+  _G.FlexxUIDB.powerBarLayout = layout
+  if UF.ApplyUnitFramePowerBarLayout then
+    for _, f in pairs(UF.state.frames) do
+      if f and f.power and f.health then
+        UF.ApplyUnitFramePowerBarLayout(f)
+        if f.unit then UF.UpdateUnitFrame(f) end
+      end
+    end
+  end
+  return true
+end
+
+function UF.SetUnitFrameAuraBuffs(enabled)
+  UF.EnsureDB()
+  _G.FlexxUIDB.playerAuraBuffs = enabled and true or false
+  if UF.EnsureAuraDB then UF.EnsureAuraDB() end
+  if UF.RefreshAurasFromOptions then UF.RefreshAurasFromOptions() end
+  return true
+end
+
+function UF.SetUnitFrameAuraDebuffDisplay(mode)
+  UF.EnsureDB()
+  if mode ~= "none" and mode ~= "icons" and mode ~= "bars" then return false end
+  _G.FlexxUIDB.playerAuraDebuffDisplay = mode
+  if UF.EnsureAuraDB then UF.EnsureAuraDB() end
+  if UF.RefreshAurasFromOptions then UF.RefreshAurasFromOptions() end
+  return true
+end
+
+function UF.SetUnitFrameAuraDebuffs(enabled)
+  return UF.SetUnitFrameAuraDebuffDisplay(enabled and "icons" or "none")
+end
+
+function UF.SetUnitFrameAuraBars(enabled)
+  if enabled then
+    return UF.SetUnitFrameAuraDebuffDisplay("bars")
+  end
+  UF.EnsureDB()
+  if (_G.FlexxUIDB.playerAuraDebuffDisplay or "") == "bars" then
+    return UF.SetUnitFrameAuraDebuffDisplay("icons")
+  end
+  return true
+end
+
 function UF.SetClassBarColorStyle(style)
   UF.EnsureDB()
   if style ~= "default" and style ~= "dark" then return false end

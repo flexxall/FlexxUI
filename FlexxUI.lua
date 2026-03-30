@@ -1,10 +1,27 @@
 local ADDON_NAME, ns = ...
 ns.name = ADDON_NAME
---- Semver from ## Version in FlexxUI.toc (GetAddOnMetadata).
-ns.version = (GetAddOnMetadata and GetAddOnMetadata(ADDON_NAME, "Version")) or "dev"
---- Packaged logo; use for options header, shell, etc.
+
+--- Semver from ## Version in FlexxUI.toc. Retail uses C_AddOns; older clients use GetAddOnMetadata.
+local function ReadVersionFromTOC()
+  local name = ADDON_NAME
+  if C_AddOns and C_AddOns.GetAddOnMetadata then
+    local v = C_AddOns.GetAddOnMetadata(name, "Version")
+    if v and v ~= "" then return v end
+  end
+  if GetAddOnMetadata then
+    local v = GetAddOnMetadata(name, "Version")
+    if v and v ~= "" then return v end
+  end
+  return nil
+end
+
+ns.version = ReadVersionFromTOC() or "dev"
+--- Packaged logo; options header, minimap button, etc.
 ns.media = {
   logo = "Interface\\AddOns\\FlexxUI\\Media\\FlexxUi.png",
+  minimapMini = "Interface\\AddOns\\FlexxUI\\Media\\FlexxUiMini.png",
+  --- Health bar threat / aggro overlay (replace strip quads in Style.lua).
+  aggroMask = "Interface\\AddOns\\FlexxUI\\Media\\aggroMask.png",
 }
 
 local function Print(msg)
@@ -25,28 +42,8 @@ SlashCmdList['FLEXXUI'] = function(msg)
   end
 
   if msg == "help" or msg == "?" then
-    Print("Commands: |cffaaaaaa/flexxui|r — toggle shell  |  |cffaaaaaaconfig|r — options  |  |cffaaaaaaversion|r — version  |  |cffaaaaaalog|r — log  |  |cffaaaaaareload|r — ReloadUI")
-    Print("More: |cffaaaaaareset|r |cffaaaaaaresetlayout|r |cffaaaaaacastpreview|r |cffaaaaaatexture|r |cffaaaaaacolor|r — see README.md")
-    return
-  end
-
-  if msg == "log" then
-    if ns.OutputLog and ns.OutputLog.Toggle then
-      ns.OutputLog.Toggle()
-    else
-      Print("Log window not loaded yet.")
-    end
-    return
-  end
-
-  if msg == "logdiag" or msg == "diag" then
-    if _G.FlexxUI_LogDiag then
-      _G.FlexxUI_LogDiag("slash", "manual")
-    elseif _G.FlexxUI_Log then
-      _G.FlexxUI_Log("[logdiag/slash] manual")
-    else
-      Print("Log diagnostics unavailable.")
-    end
+    Print("Commands: |cffaaaaaa/flexxui|r — open settings  |  |cffaaaaaaversion|r — version  |  |cffaaaaaareload|r — ReloadUI")
+    Print("More: |cffaaaaaareset|r |cffaaaaaaresetlayout|r |cffaaaaaatexture|r |cffaaaaaacolor|r — see README.md")
     return
   end
 
@@ -100,16 +97,6 @@ SlashCmdList['FLEXXUI'] = function(msg)
     return
   end
 
-  if msg == "castpreview" or msg == "castbarpreview" then
-    if ns.CastBar and ns.CastBar.ToggleLayoutPreview then
-      local on = ns.CastBar.ToggleLayoutPreview()
-      Print("Cast bar layout preview: " .. (on and "on" or "off") .. "  (|cffaaaaaa/flexxui castpreview|r to toggle)")
-    else
-      Print("Cast bar not loaded yet.")
-    end
-    return
-  end
-
   if msg:match("^color%s+") then
     local mode = msg:match("^color%s+(%S+)")
     if not mode then
@@ -124,9 +111,14 @@ SlashCmdList['FLEXXUI'] = function(msg)
     return
   end
 
-  if _G.FlexxUI_Toggle then
-    _G.FlexxUI_Toggle()
-  else
-    Print("UI is not loaded yet.")
+  if msg == "" then
+    if ns.Options and ns.Options.Open then
+      ns.Options.Open()
+    else
+      Print("Options not loaded yet.")
+    end
+    return
   end
+
+  Print("Unknown command. |cffaaaaaa/flexxui help|r")
 end

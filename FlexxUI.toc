@@ -1,7 +1,7 @@
 ## Interface: 120000
 ## Title: FlexxUI
 ## Version: 0.1.0
-## Notes: Custom unit frames, cast bars, fonts, and UI shell for World of Warcraft.
+## Notes: Custom unit frames, cast bars, fonts, and options UI for World of Warcraft.
 ## Author: FlexxDev
 ## SavedVariables: FlexxUIDB, FlexxUILayout
 ## X-Category: Interface Enhancements
@@ -9,19 +9,19 @@
 FlexxUI.lua
 core\DB.lua
 core\Fonts.lua
-core\OutputLog.lua
 core\Movers.lua
-core\Shell.lua
 core\Options.lua
 core\Options_State.lua
 core\Options_Controls.lua
 core\Options_Pages.lua
 core\Options_Panel.lua
+core\Minimap.lua
 modules\UnitFrames.lua
 modules\UnitFrames\Style.lua
 modules\UnitFrames\Elements.lua
 modules\UnitFrames\SecondaryResource.lua
 modules\UnitFrames\Frames.lua
+modules\UnitFrames\Auras.lua
 modules\UnitFrames\API.lua
 modules\CastBar.lua
 FlexxUI_UI.lua

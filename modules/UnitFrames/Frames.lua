@@ -1,6 +1,68 @@
 local _, ns = ...
 local UF = ns.UnitFrames
 
+local FULL_POWER_H = 10
+local INSET_POWER_H = 5
+--- Inset bar is this many pixels narrower than the health bar (total, split evenly on each side).
+local INSET_POWER_NARROWER = 20
+local POWER_GAP = 4
+local BOTTOM_PAD = 8
+
+--- Width of inset power bar vs current health bar (call after health has width).
+function UF.SyncInsetPowerBarWidth(f)
+  if not f or not f.power or not f.health then return end
+  UF.EnsureDB()
+  if (_G.FlexxUIDB.powerBarLayout or "full") ~= "inset" then return end
+  local w = f.health:GetWidth()
+  if w and w > 0 then
+    f.power:SetWidth(math.max(1, w - INSET_POWER_NARROWER))
+  end
+end
+
+--- Health bar position/size are identical in both layouts. Only the power bar changes: full strip below vs inset overlap.
+function UF.ApplyUnitFramePowerBarLayout(f)
+  if not f or not f.power or not f.health then return end
+  UF.EnsureDB()
+  local mode = _G.FlexxUIDB.powerBarLayout or "full"
+  if mode ~= "inset" then mode = "full" end
+
+  local healthBottom = BOTTOM_PAD + FULL_POWER_H + POWER_GAP
+
+  f.health:ClearAllPoints()
+  f.health:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, healthBottom)
+  f.health:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, healthBottom)
+
+  f.power:ClearAllPoints()
+  if mode == "full" then
+    f.power:SetHeight(FULL_POWER_H)
+    f.power:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, BOTTOM_PAD)
+    f.power:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, BOTTOM_PAD)
+  else
+    f.power:SetHeight(INSET_POWER_H)
+    f.power:SetPoint("CENTER", f.health, "BOTTOM", 0, 0)
+    UF.SyncInsetPowerBarWidth(f)
+  end
+
+  UF.ApplyUnitFrameChildLevels(f)
+  if UF.ApplyPowerTextLayout then UF.ApplyPowerTextLayout(f) end
+  if UF.AnchorTopResourceBarToHealth then UF.AnchorTopResourceBarToHealth(f) end
+end
+
+--- After f:SetFrameLevel, re-apply stacking so children stay ordered (threat under health under prediction strips).
+function UF.ApplyUnitFrameChildLevels(f)
+  if not f then return end
+  local z = f:GetFrameLevel() or 0
+  if f.power and f.power.SetFrameLevel then
+    local inset = _G.FlexxUIDB and _G.FlexxUIDB.powerBarLayout == "inset"
+    f.power:SetFrameLevel(z + (inset and 3 or 2))
+  end
+  if f.health and f.health.SetFrameLevel then f.health:SetFrameLevel(z + 2) end
+  if f.healthPrediction and f.healthPrediction.SetFrameLevel then f.healthPrediction:SetFrameLevel(z + 100) end
+  if f.healthTextLayer and f.healthTextLayer.SetFrameLevel then f.healthTextLayer:SetFrameLevel(z + 110) end
+  if f.topBarFrame and f.topBarFrame.SetFrameLevel then f.topBarFrame:SetFrameLevel(z + 5) end
+  if f._threatGlowRoot and f._threatGlowRoot.SetFrameLevel then f._threatGlowRoot:SetFrameLevel(z + 1) end
+end
+
 local function EnsureBlizzardHooks()
   if UF.state.blizzardHooksInstalled then return end
   if not PlayerFrame or not TargetFrame then return end
@@ -38,31 +100,52 @@ function UF.ApplyHideBlizzard()
 end
 
 local function BuildPlayerResting(f)
-  local zSmall = (ns.Fonts and ns.Fonts.CreateFontString(f, "OVERLAY", "GameFontHighlightSmall", "unit")) or f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  zSmall:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, 4)
+  -- Same layer as name/health text but above the StatusBar fill: parent to healthTextLayer (high FrameLevel) + draw sublayer on top.
+  local zParent = f.healthTextLayer or f
+  local zSmall = (ns.Fonts and ns.Fonts.CreateFontString(zParent, "OVERLAY", "GameFontHighlightSmall", "unit")) or zParent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  -- BOTTOMLEFT→health TOPLEFT: here, positive Y shifts the row *up* above the bar; use negative Y to sit lower so zzz overlaps the top edge of the fill.
+  local restingZOverlapY = -4
+  zSmall:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, restingZOverlapY)
   zSmall:SetText("z")
   zSmall:SetTextColor(1, 0.88, 0.35)
   zSmall:SetShadowOffset(1, -1)
+  pcall(function() zSmall:SetDrawLayer("OVERLAY", 9) end)
   zSmall:Hide()
 
-  local zMid = (ns.Fonts and ns.Fonts.CreateFontString(f, "OVERLAY", "GameFontHighlight", "unit")) or f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  zMid:SetPoint("LEFT", zSmall, "RIGHT", 2, 0)
+  local zMid
+  if ns.Fonts and ns.Fonts.CreateFontString then
+    zMid = ns.Fonts.CreateFontString(zParent, "OVERLAY", "GameFontHighlight", "unit")
+    zMid._flexxFontExtraSize = 2
+  else
+    zMid = zParent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    pcall(function()
+      local fh, sz, fl = zMid:GetFont()
+      if fh and type(sz) == "number" then zMid:SetFont(fh, sz + 2, fl) end
+    end)
+  end
+  -- Bottom-align widget corners; different templates still draw glyphs with slightly different optical baselines.
+  -- Nudge mid + big down 1px so they line up with HighlightSmall’s “z” (widget bottom ≠ typographic baseline).
+  local zChainDy = -1
+  zMid:SetPoint("BOTTOMLEFT", zSmall, "BOTTOMRIGHT", 2, zChainDy)
   zMid:SetText("z")
   zMid:SetTextColor(1, 0.88, 0.35)
   zMid:SetShadowOffset(1, -1)
+  pcall(function() zMid:SetDrawLayer("OVERLAY", 9) end)
   zMid:Hide()
 
-  local zBig = (ns.Fonts and ns.Fonts.CreateFontString(f, "OVERLAY", "GameFontNormal", "unit")) or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  zBig:SetPoint("LEFT", zMid, "RIGHT", 2, 0)
+  local zBig = (ns.Fonts and ns.Fonts.CreateFontString(zParent, "OVERLAY", "GameFontNormal", "unit")) or zParent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  local zBigExtraX = 1
+  zBig:SetPoint("BOTTOMLEFT", zMid, "BOTTOMRIGHT", 2 + zBigExtraX, zChainDy)
   zBig:SetText("Z")
   zBig:SetTextColor(1, 0.88, 0.35)
   zBig:SetShadowOffset(1, -1)
+  pcall(function() zBig:SetDrawLayer("OVERLAY", 9) end)
   zBig:Hide()
 
   local function Lerp(a, b, t) return a + (b - a) * t end
   f.restingIcons = { zSmall, zMid, zBig }
   f.restingPulseTime = 0
-  f.restingPulseDriver = CreateFrame("Frame", nil, f)
+  f.restingPulseDriver = CreateFrame("Frame", nil, zParent)
   f.restingPulseDriver:Hide()
   f.restingPulseOnUpdate = function(_, elapsed)
     local minA, maxA = 0.18, 1
@@ -112,8 +195,21 @@ end
 
 local function RegisterEvents(frame, unit)
   frame:SetScript("OnEvent", function(self, event, arg1)
+    if event == "UNIT_THREAT_LIST_UPDATE" then
+      UF.UpdateUnitFrame(self)
+      return
+    end
     if event == "PLAYER_TARGET_CHANGED" then
-      if self.unit == "target" then UF.UpdateUnitFrame(self) end
+      if self.unit == "target" then
+        UF.UpdateUnitFrame(self)
+        -- Health/max sometimes populate a frame after the event; refresh again so the bar is not stuck at 0 max.
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0, function()
+            if not self or self.unit ~= "target" then return end
+            UF.UpdateUnitFrame(self)
+          end)
+        end
+      end
       return
     end
     if event == "PLAYER_UPDATE_RESTING" or event == "UPDATE_EXHAUSTION" then
@@ -158,6 +254,8 @@ local function RegisterEvents(frame, unit)
   regUnit("UNIT_ABSORB_AMOUNT_CHANGED")
   regUnit("UNIT_HEAL_ABSORB_AMOUNT_CHANGED")
   regUnit("UNIT_HEAL_PREDICTION")
+  regUnit("UNIT_AURA")
+  frame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
   frame:RegisterUnitEvent("UNIT_POWER_UPDATE", unit)
   frame:RegisterUnitEvent("UNIT_MAXPOWER", unit)
   frame:RegisterUnitEvent("UNIT_DISPLAYPOWER", unit)
@@ -165,9 +263,6 @@ end
 
 local function MakeUnitFrame(key, unit, defaultPoint)
   local f = CreateFrame("Button", "FlexxUI_UnitFrame_" .. key, UIParent, "SecureUnitButtonTemplate,BackdropTemplate")
-  local powerH, gap = 10, 4
-  local bottomPad = 8
-  local healthBottom = bottomPad + powerH + gap
   f:SetSize(245, 80)
   f.unit = unit
   f.unitFrameKey = key
@@ -185,11 +280,8 @@ local function MakeUnitFrame(key, unit, defaultPoint)
   -- Top strip: class color, or secondary resource pips (combo, holy power, chi, shards, etc.).
   if UF.CreateTopResourceBar then UF.CreateTopResourceBar(f) end
 
-  f.power = UF.CreatePowerBar(f, 200, powerH)
+  f.power = UF.CreatePowerBar(f, 200, FULL_POWER_H)
   f.power._flexxBarRole = "power"
-  f.power:SetPoint("BOTTOMLEFT", 10, bottomPad)
-  f.power:SetPoint("BOTTOMRIGHT", -10, bottomPad)
-  f.power:SetFrameLevel(f:GetFrameLevel())
 
   f.powerText = (ns.Fonts and ns.Fonts.CreateFontString(f.power, "OVERLAY", "GameFontHighlightSmall", "unit")) or f.power:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   f.powerText:SetPoint("CENTER", f.power, "CENTER", 0, 0)
@@ -201,29 +293,11 @@ local function MakeUnitFrame(key, unit, defaultPoint)
 
   f.health = UF.CreateStatusBar(f, 200, 28)
   f.health._flexxUnit = unit
-  f.health:SetPoint("BOTTOMLEFT", 10, healthBottom)
-  f.health:SetPoint("BOTTOMRIGHT", -10, healthBottom)
-  f.health:SetFrameLevel(f:GetFrameLevel())
   f.health:EnableMouse(false)
 
-  f.name = (ns.Fonts and ns.Fonts.CreateFontString(f, "OVERLAY", "GameFontNormal", "unit")) or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  f.name:SetPoint("LEFT", f.health, "LEFT", 6, -5)
-  f.name:SetPoint("RIGHT", f.health, "RIGHT", -6, -5)
-  f.name:SetJustifyH("LEFT")
-  f.name:SetDrawLayer("OVERLAY", 7)
-  f.name:SetShadowOffset(1, -1)
-  f.name:SetShadowColor(0, 0, 0, 0.85)
+  UF.ApplyUnitFramePowerBarLayout(f)
 
-  f.healthText = (ns.Fonts and ns.Fonts.CreateFontString(f, "OVERLAY", "GameFontHighlightSmall", "unit")) or f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  f.healthText:SetPoint("RIGHT", f.health, "RIGHT", -6, -5)
-  f.healthText:SetJustifyH("RIGHT")
-  f.healthText:SetDrawLayer("OVERLAY", 8)
-  f.healthText:SetShadowOffset(1, -1)
-  f.healthText:SetShadowColor(0, 0, 0, 0.9)
-  f.healthText:SetText("")
-
-  -- Prediction layer: child Frame of f (not of f.health) with high FrameLevel so it draws above name/healthText.
-  -- Textures use default OVERLAY (sublevel 0–7 cap); frame stacking handles ordering vs font strings.
+  -- Prediction sits above the health fill; name/health % need their own layer above prediction (FontStrings have no FrameLevel).
   f.healthPrediction = CreateFrame("Frame", nil, f)
   f.healthPrediction:SetPoint("TOPLEFT", f.health, "TOPLEFT")
   f.healthPrediction:SetPoint("BOTTOMLEFT", f.health, "BOTTOMLEFT")
@@ -237,6 +311,7 @@ local function MakeUnitFrame(key, unit, defaultPoint)
         f.healthPrediction:SetWidth(w * 1.02)
       end
     end)
+    UF.SyncInsetPowerBarWidth(f)
   end
   SyncHealthPredictionWidth()
   f.health:HookScript("OnSizeChanged", SyncHealthPredictionWidth)
@@ -276,6 +351,27 @@ local function MakeUnitFrame(key, unit, defaultPoint)
   f.healAbsorbTex:SetVertexColor(0.55, 0.12, 0.12, 0.92)
   f.healAbsorbTex:Hide()
 
+  f.healthTextLayer = CreateFrame("Frame", nil, f)
+  f.healthTextLayer:SetAllPoints(f.health)
+  f.healthTextLayer:SetFrameLevel((f:GetFrameLevel() or 0) + 110)
+  f.healthTextLayer:EnableMouse(false)
+
+  f.name = (ns.Fonts and ns.Fonts.CreateFontString(f.healthTextLayer, "OVERLAY", "GameFontNormal", "unit")) or f.healthTextLayer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  f.name:SetPoint("LEFT", f.health, "LEFT", 6, -1)
+  f.name:SetPoint("RIGHT", f.health, "RIGHT", -6, -1)
+  f.name:SetJustifyH("LEFT")
+  f.name:SetDrawLayer("OVERLAY", 7)
+  f.name:SetShadowOffset(1, -1)
+  f.name:SetShadowColor(0, 0, 0, 0.85)
+
+  f.healthText = (ns.Fonts and ns.Fonts.CreateFontString(f.healthTextLayer, "OVERLAY", "GameFontHighlightSmall", "unit")) or f.healthTextLayer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.healthText:SetPoint("RIGHT", f.health, "RIGHT", -6, -1)
+  f.healthText:SetJustifyH("RIGHT")
+  f.healthText:SetDrawLayer("OVERLAY", 8)
+  f.healthText:SetShadowOffset(1, -1)
+  f.healthText:SetShadowColor(0, 0, 0, 0.9)
+  f.healthText:SetText("")
+
   if unit == "player" then
     BuildPlayerResting(f)
     UF.RemoveFrameBorder(f)
@@ -283,8 +379,11 @@ local function MakeUnitFrame(key, unit, defaultPoint)
     UF.RemovePowerBarBorder(f.power)
   elseif unit == "target" then
     UF.RemoveFrameBorder(f)
+    UF.RemoveStatusBarBorder(f.health)
   end
   UF.ApplyUnitFrameBackdrop(f)
+
+  if UF.CreateUnitAuras then UF.CreateUnitAuras(f) end
 
   -- Poll health prediction + heal/absorb APIs (same as Blizzard compact frames); target had no refresh before.
   f.healthRefreshElapsed = 0
@@ -305,23 +404,23 @@ local function MakeUnitFrame(key, unit, defaultPoint)
     f:SetPoint(unpack(defaultPoint))
   end
 
-  RegisterEvents(f, unit)
-  UF.UpdateUnitFrame(f)
-  UF.state.frames[key] = f
-  -- Parent to UIParent only: FlexxUI_Shell uses DIALOG strata; parenting HUD to it pulls frames above mining/profession UI.
+  -- Parent/strata/level before first UpdateUnitFrame so threat glow and child levels use the final stack.
   f:SetParent(UIParent)
   f:SetFrameStrata("BACKGROUND")
   f:SetFrameLevel(0)
+  UF.ApplyUnitFrameChildLevels(f)
+
+  RegisterEvents(f, unit)
+  UF.UpdateUnitFrame(f)
+  UF.state.frames[key] = f
   return f
 end
 
 function UF.Create()
   UF.EnsureDB()
   if UF.state.frames.player or UF.state.frames.target then return end
-  local shell = ns.Shell and ns.Shell.Get and ns.Shell.Get()
-  local anchor = shell or UIParent
-  MakeUnitFrame("player", "player", { "TOPLEFT", anchor, "BOTTOMLEFT", 0, -20 })
-  MakeUnitFrame("target", "target", { "TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -20 })
+  MakeUnitFrame("player", "player", { "TOPLEFT", UIParent, "BOTTOMLEFT", 0, -20 })
+  MakeUnitFrame("target", "target", { "TOPRIGHT", UIParent, "BOTTOMRIGHT", 0, -20 })
   UF.ApplyHideBlizzard()
 end
 

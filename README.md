@@ -1,6 +1,6 @@
 # FlexxUI
 
-Custom **World of Warcraft** interface add-on: unit frames, cast bars, font styling, a small control shell, and an in-game options panel.
+Custom **World of Warcraft** interface add-on: unit frames, cast bars, font styling, minimap button, and an in-game options panel.
 
 **Repository:** [github.com/flexxall/FlexxUI](https://github.com/flexxall/FlexxUI) · clone: `https://github.com/flexxall/FlexxUI.git`
 
@@ -20,7 +20,7 @@ Custom **World of Warcraft** interface add-on: unit frames, cast bars, font styl
 
 ## Configuration
 
-- **Options:** `/flexxui config` or `/flexxui settings` — or use the shell **Settings** button if the shell is visible.
+- **Options:** `/flexxui`, `/flexxui config`, or **click the minimap button** (FlexxUI icon).
 - **General** — global toggles, reload/reset; **Fonts** — UI and unit typography.
 - **Unit Frames** — per-unit tabs (Player, Target, Pet): health, resource text, class bar, cast-related options, name/text overrides.
 - **Saved variables:** `FlexxUIDB` (options), `FlexxUILayout` (frame positions from movers).
@@ -29,25 +29,17 @@ Custom **World of Warcraft** interface add-on: unit frames, cast bars, font styl
 
 | Command | Action |
 |--------|--------|
-| `/flexxui` | Toggle the FlexxUI shell (when loaded). |
+| `/flexxui` | Open settings (same as `/flexxui config`). |
 | `/flexxui help` | Short help in chat. |
 | `/flexxui version` | Add-on version and WoW interface (TOC) version. |
 | `/flexxui config` | Open settings. |
-| `/flexxui log` | Toggle output log window. |
-| `/flexxui logdiag` | Log diagnostics (if available). |
 | `/flexxui reload` | `ReloadUI()`. |
 | `/flexxui reset` | Reset FlexxUI options to defaults (reloads). |
 | `/flexxui resetlayout` | Clear saved frame positions (reloads). |
-| `/flexxui castpreview` | Toggle cast bar layout preview. |
 | `/flexxui texture <name>` | Health bar texture: `none`, `default`, `flat`, `smooth`. |
 | `/flexxui color <mode>` | Player health color: `class`, `blizzard`, `dark`. |
 
 Aliases: `/flexx` where applicable.
-
-## Versioning
-
-- **Semantic versioning** — `MAJOR.MINOR.PATCH` in `FlexxUI.toc` (`## Version`).
-- **Changelog** — see [CHANGELOG.md](./CHANGELOG.md). For each release: bump `## Version`, add a section under `CHANGELOG.md`, and tag in git (`v0.1.0`, etc.).
 
 ## Development
 
@@ -72,8 +64,6 @@ git push -u origin main
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
-
-Keep `## Version` in `FlexxUI.toc`, `CHANGELOG.md`, and git tags in sync when you release.
 
 ## Repository
 

@@ -3,6 +3,8 @@ local UF = ns.UnitFrames
 
 local MAX_PIPS = 7
 local PIP_W, PIP_H = 12, 7
+--- Pip row height; centered on health top so half sits above the bar (same idea as inset power straddling the bottom edge).
+local TOP_BAR_H = 12
 
 --- Power types to probe (first match with UnitPowerMax > 0 wins). Covers combo, holy power, chi, shards, arcane, essence.
 local function SecondaryPowerProbeList()
@@ -32,11 +34,20 @@ function UF.GetSecondaryPowerValues(unit)
   return nil, 0, 0
 end
 
+--- Call after `f.health` exists. Pips sit on the health bar top edge (half above, half on the bar).
+function UF.AnchorTopResourceBarToHealth(f)
+  if not f or not f.topBarFrame or not f.health then return end
+  local bar = f.topBarFrame
+  bar:ClearAllPoints()
+  bar:SetHeight(TOP_BAR_H)
+  local half = TOP_BAR_H / 2
+  bar:SetPoint("TOPLEFT", f.health, "TOPLEFT", 0, half)
+  bar:SetPoint("TOPRIGHT", f.health, "TOPRIGHT", 0, half)
+end
+
 function UF.CreateTopResourceBar(f)
   f.topBarFrame = CreateFrame("Frame", nil, f)
-  f.topBarFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -10)
-  f.topBarFrame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
-  f.topBarFrame:SetHeight(12)
+  f.topBarFrame:SetHeight(TOP_BAR_H)
   f.topBarFrame:SetFrameLevel(f:GetFrameLevel() + 5)
   f.topBarFrame:EnableMouse(false)
   f.topBarFrame:Hide()
@@ -85,6 +96,12 @@ function UF.UpdateTopResourceBar(f)
     end
   end
 
+  -- Secondary / class-colored top strip is player-only; target frame does not use it.
+  if f.unit == "target" then
+    hideAll()
+    return
+  end
+
   if not UnitExists(f.unit) or not showSecondary then
     hideAll()
     return
@@ -97,7 +114,7 @@ function UF.UpdateTopResourceBar(f)
   end
 
   f.secondaryPipContainer:Show()
-  f.topBarFrame:SetHeight(12)
+  f.topBarFrame:SetHeight(TOP_BAR_H)
   f.topBarFrame:Show()
 
   local n

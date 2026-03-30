@@ -8,6 +8,12 @@ local function ArtFont(parent, templateName)
   return parent:CreateFontString(nil, "ARTWORK", templateName)
 end
 
+--[[ Options UI copy (find / tweak quickly):
+  hdr*   — section titles
+  lbl*   — labels for the control directly below
+  hint*  — optional supplementary lines (short subtitles, version, placeholders, one-off notes).
+           Grep "hint" in this file to list or edit all helper-style copy. ]]
+
 local function nameColorOverrideDbKey(unitKey)
   if unitKey == "player" then return "nameTextColorOverridePlayer" end
   if unitKey == "target" then return "nameTextColorOverrideTarget" end
@@ -33,7 +39,8 @@ local function setNameColorOverrideValue(unitKey, value)
 end
 
 local UNIT_PAGE_CONTENT_HEIGHT = 1480
-local PLAYER_SUBTAB_HEIGHT = { health = 810, power = 1100, classbar = 300, cast = 650, general = 450 }
+local TARGET_SUBTAB_HEIGHT = { frame = UNIT_PAGE_CONTENT_HEIGHT, cast = 360 }
+local PLAYER_SUBTAB_HEIGHT = { health = 810, power = 1220, classbar = 300, auras = 400, cast = 520, general = 450 }
 
 local function addResourceBarLayoutSection(parent, below, gap)
   gap = gap or 16
@@ -259,7 +266,7 @@ function O.BuildGeneralPage(content)
   local settingsCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
   settingsCard:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
   settingsCard:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-  settingsCard:SetHeight(292)
+  settingsCard:SetHeight(340)
   O.StyleSurface(settingsCard, 0.80)
   settingsCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
   settingsCard:SetBackdropBorderColor(0, 0, 0, 0)
@@ -267,7 +274,7 @@ function O.BuildGeneralPage(content)
   local panelSettings = CreateFrame("Frame", nil, settingsCard)
   panelSettings:SetPoint("TOPLEFT", 14, -14)
   panelSettings:SetPoint("TOPRIGHT", -14, -14)
-  panelSettings:SetHeight(258)
+  panelSettings:SetHeight(306)
 
   local fontsCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
   fontsCard:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
@@ -294,23 +301,17 @@ function O.BuildGeneralPage(content)
   panelFontsUI:SetHeight(348)
   panelFontsUnit:SetHeight(478)
 
-  local ver = (GetAddOnMetadata and GetAddOnMetadata("FlexxUI", "Version")) or "dev"
+  local ver = ns.version or "dev"
   local welcomeTitle = ArtFont(panelSettings, "GameFontNormalLarge")
   welcomeTitle:SetPoint("TOPLEFT", 0, 0)
   welcomeTitle:SetText("Welcome to FlexxUI")
 
-  local welcomeBody = ArtFont(panelSettings, "GameFontHighlightSmall")
-  welcomeBody:SetPoint("TOPLEFT", welcomeTitle, "BOTTOMLEFT", 0, -6)
-  welcomeBody:SetWidth(520)
-  welcomeBody:SetJustifyH("LEFT")
-  welcomeBody:SetText("This is your home tab: global toggles, maintenance, and layout resets. Use General → Fonts for typography, and the Unit tabs for player, target, and pet frames.")
-
-  local welcomeVer = ArtFont(panelSettings, "GameFontHighlightSmall")
-  welcomeVer:SetPoint("TOPLEFT", welcomeBody, "BOTTOMLEFT", 0, -4)
-  welcomeVer:SetText("|cffaaaaaaVersion " .. ver .. "|r")
+  local hintWelcomeVersion = ArtFont(panelSettings, "GameFontHighlightSmall")
+  hintWelcomeVersion:SetPoint("TOPLEFT", welcomeTitle, "BOTTOMLEFT", 0, -6)
+  hintWelcomeVersion:SetText("|cffaaaaaaVersion " .. ver .. "|r")
 
   local hdrBlizzard = ArtFont(panelSettings, "GameFontHighlight")
-  hdrBlizzard:SetPoint("TOPLEFT", welcomeVer, "BOTTOMLEFT", 0, -16)
+  hdrBlizzard:SetPoint("TOPLEFT", hintWelcomeVersion, "BOTTOMLEFT", 0, -16)
   hdrBlizzard:SetText("Blizzard frames")
 
   local cbHide = O.MakeToggle(panelSettings, "Hide Blizzard player/target frames (experimental)", function()
@@ -322,8 +323,23 @@ function O.BuildGeneralPage(content)
   cbHide:SetPoint("TOPLEFT", hdrBlizzard, "BOTTOMLEFT", 0, -6)
   table.insert(O.state.controls, cbHide)
 
+  local hdrMinimap = ArtFont(panelSettings, "GameFontHighlight")
+  hdrMinimap:SetPoint("TOPLEFT", cbHide, "BOTTOMLEFT", 0, -18)
+  hdrMinimap:SetText("Minimap")
+
+  local cbShowMinimap = O.MakeToggle(panelSettings, "Show minimap button", function()
+    return _G.FlexxUIDB.minimapButtonShow ~= false
+  end, function(v)
+    _G.FlexxUIDB.minimapButtonShow = v and true or false
+    if ns.Minimap and ns.Minimap.ApplyVisibility then
+      ns.Minimap.ApplyVisibility()
+    end
+  end)
+  cbShowMinimap:SetPoint("TOPLEFT", hdrMinimap, "BOTTOMLEFT", 0, -6)
+  table.insert(O.state.controls, cbShowMinimap)
+
   local hdrMaint = ArtFont(panelSettings, "GameFontHighlight")
-  hdrMaint:SetPoint("TOPLEFT", cbHide, "BOTTOMLEFT", 0, -18)
+  hdrMaint:SetPoint("TOPLEFT", cbShowMinimap, "BOTTOMLEFT", 0, -18)
   hdrMaint:SetText("Maintenance")
 
   local reloadBtn = O.MakeFlatButton(panelSettings, "Reload UI", nil, nil, function() ReloadUI() end)
@@ -344,20 +360,13 @@ function O.BuildGeneralPage(content)
   end)
   resetPosBtn:SetPoint("TOPLEFT", hdrLayout, "BOTTOMLEFT", 0, -6)
 
-  local layoutResetHint = ArtFont(panelSettings, "GameFontHighlightSmall")
-  layoutResetHint:SetPoint("TOPLEFT", resetPosBtn, "BOTTOMLEFT", 0, -6)
-  layoutResetHint:SetWidth(520)
-  layoutResetHint:SetJustifyH("LEFT")
-  layoutResetHint:SetText("Reset Settings restores FlexxUI options only. Dragged frame positions (shell, unit frames, cast bars) stay until you use Reset positions or |cffaaaaaa/flexxui resetlayout|r.")
-
   local fontUiHdr = ArtFont(panelFontsUI, "GameFontHighlight")
   fontUiHdr:SetPoint("TOPLEFT", 0, 0)
-  fontUiHdr:SetText("Settings panel, shell, options chrome")
+  fontUiHdr:SetText("Settings panel and options chrome")
 
   local rbUiDef = O.MakeRadio(panelFontsUI, "Default (Blizzard templates)", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "default", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUI = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUiDef:SetPoint("TOPLEFT", fontUiHdr, "BOTTOMLEFT", 0, -8)
@@ -366,7 +375,6 @@ function O.BuildGeneralPage(content)
   local rbUiFriz = O.MakeRadio(panelFontsUI, "Friz Quadrata", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "friz", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUI = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUiFriz:SetPoint("TOPLEFT", rbUiDef, "BOTTOMLEFT", 0, -8)
@@ -375,7 +383,6 @@ function O.BuildGeneralPage(content)
   local rbUiArial = O.MakeRadio(panelFontsUI, "Arial Narrow", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "arial_narrow", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUI = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUiArial:SetPoint("TOPLEFT", rbUiFriz, "BOTTOMLEFT", 0, -8)
@@ -384,7 +391,6 @@ function O.BuildGeneralPage(content)
   local rbUiRoboto = O.MakeRadio(panelFontsUI, "Roboto Condensed Bold", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "roboto_condensed", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUI = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUiRoboto:SetPoint("TOPLEFT", rbUiArial, "BOTTOMLEFT", 0, -8)
@@ -405,7 +411,6 @@ function O.BuildGeneralPage(content)
   local rbUDef = O.MakeRadio(panelFontsUnit, "Default (Blizzard templates)", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "default", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUnit = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUDef:SetPoint("TOPLEFT", fontUnitHdr, "BOTTOMLEFT", 0, -8)
@@ -414,7 +419,6 @@ function O.BuildGeneralPage(content)
   local rbUFriz = O.MakeRadio(panelFontsUnit, "Friz Quadrata", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "friz", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUnit = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUFriz:SetPoint("TOPLEFT", rbUDef, "BOTTOMLEFT", 0, -8)
@@ -423,7 +427,6 @@ function O.BuildGeneralPage(content)
   local rbUArial = O.MakeRadio(panelFontsUnit, "Arial Narrow", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "arial_narrow", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUnit = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbUArial:SetPoint("TOPLEFT", rbUFriz, "BOTTOMLEFT", 0, -8)
@@ -432,7 +435,6 @@ function O.BuildGeneralPage(content)
   local rbURoboto = O.MakeRadio(panelFontsUnit, "Roboto Condensed Bold", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "roboto_condensed", function(mode)
     _G.FlexxUIDB.flexxUIFontPresetUnit = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    if ns.OutputLog and ns.OutputLog.ReapplyLogTitleAccent then ns.OutputLog.ReapplyLogTitleAccent() end
     O.RefreshControls()
   end)
   rbURoboto:SetPoint("TOPLEFT", rbUArial, "BOTTOMLEFT", 0, -8)
@@ -450,18 +452,12 @@ function O.BuildGeneralPage(content)
   nameColorDefaultHdr:SetPoint("TOPLEFT", scaleUnit, "BOTTOMLEFT", 0, -20)
   nameColorDefaultHdr:SetText("Unit name text color (default)")
 
-  local nameColorDefaultHint = ArtFont(panelFontsUnit, "GameFontHighlightSmall")
-  nameColorDefaultHint:SetPoint("TOPLEFT", nameColorDefaultHdr, "BOTTOMLEFT", 0, -4)
-  nameColorDefaultHint:SetWidth(520)
-  nameColorDefaultHint:SetJustifyH("LEFT")
-  nameColorDefaultHint:SetText("Applies to all unit frames unless you set an override on a unit’s page.")
-
   local rbNmClass = O.MakeRadio(panelFontsUnit, "Class color", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "class", function(mode)
     _G.FlexxUIDB.nameTextColorMode = mode
     if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end
     O.RefreshControls()
   end)
-  rbNmClass:SetPoint("TOPLEFT", nameColorDefaultHint, "BOTTOMLEFT", 0, -8)
+  rbNmClass:SetPoint("TOPLEFT", nameColorDefaultHdr, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbNmClass)
 
   local rbNmWhite = O.MakeRadio(panelFontsUnit, "White", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "white", function(mode)
@@ -516,18 +512,135 @@ function O.BuildGeneralPage(content)
   content:SetHeight(700)
 end
 
-function O.BuildDebugPage(content)
-  local title = ArtFont(content, "GameFontNormal")
-  title:SetPoint("TOPLEFT", 18, -24)
-  title:SetText("Debug")
+function O.BuildDevPage(content)
+  local DEV_PANEL_CAST = 200
+  local DEV_PANEL_AURAS = 900
 
-  local note = ArtFont(content, "GameFontHighlightSmall")
-  note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-  note:SetWidth(680)
-  note:SetJustifyH("LEFT")
-  note:SetText("Developer and temporary diagnostics. Keep options here so they can be removed in one place when no longer needed. For diagnostics: /flexxui log, /flexxui logdiag.")
+  local devCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
+  O.StyleSurface(devCard, 0.80)
+  devCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
+  devCard:SetBackdropBorderColor(0, 0, 0, 0)
 
-  content:SetHeight(120)
+  local panelCast = CreateFrame("Frame", nil, devCard)
+  local panelAuras = CreateFrame("Frame", nil, devCard)
+  for _, p in ipairs({ panelCast, panelAuras }) do
+    p:SetPoint("TOPLEFT", 14, -14)
+    p:SetPoint("TOPRIGHT", -14, -14)
+  end
+  panelCast:SetHeight(DEV_PANEL_CAST)
+  panelAuras:SetHeight(DEV_PANEL_AURAS)
+
+  local secCast = ArtFont(panelCast, "GameFontHighlight")
+  secCast:SetPoint("TOPLEFT", 0, 0)
+  secCast:SetText("Cast bars")
+
+  local cbCastIdle = O.MakeToggle(panelCast, "Show empty player cast bar when not casting", function()
+    return _G.FlexxUIDB.castBarShowIdle == true
+  end, function(v)
+    _G.FlexxUIDB.castBarShowIdle = v and true or false
+    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
+  end, 520)
+  cbCastIdle:SetPoint("TOPLEFT", secCast, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbCastIdle)
+
+  local cbCastTargetIdle = O.MakeToggle(panelCast, "Show empty target cast bar when not casting", function()
+    return _G.FlexxUIDB.castBarTargetShowIdle == true
+  end, function(v)
+    _G.FlexxUIDB.castBarTargetShowIdle = v and true or false
+    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
+  end, 520)
+  cbCastTargetIdle:SetPoint("TOPLEFT", cbCastIdle, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbCastTargetIdle)
+
+  local secAuras = ArtFont(panelAuras, "GameFontHighlight")
+  secAuras:SetPoint("TOPLEFT", 0, 0)
+  secAuras:SetText("Player frame auras (layout & preview)")
+
+  local function refreshAuraLayout()
+    if ns.UnitFrames and ns.UnitFrames.RefreshAurasFromOptions then ns.UnitFrames.RefreshAurasFromOptions() end
+  end
+
+  local cbPrevBuff = O.MakeToggle(panelAuras, "Preview buff row (placeholder icons)", function()
+    return _G.FlexxUIDB.unitFrameAuraDevPreviewBuff == true
+  end, function(v)
+    _G.FlexxUIDB.unitFrameAuraDevPreviewBuff = v and true or false
+    refreshAuraLayout()
+  end, 520)
+  cbPrevBuff:SetPoint("TOPLEFT", secAuras, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbPrevBuff)
+
+  local cbPrevDebuff = O.MakeToggle(panelAuras, "Preview debuff row (placeholder icons)", function()
+    return _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff == true
+  end, function(v)
+    _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff = v and true or false
+    refreshAuraLayout()
+  end, 520)
+  cbPrevDebuff:SetPoint("TOPLEFT", cbPrevBuff, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbPrevDebuff)
+
+  local cbPrevBars = O.MakeToggle(panelAuras, "Preview debuff timer bars", function()
+    return _G.FlexxUIDB.unitFrameAuraDevPreviewBars == true
+  end, function(v)
+    _G.FlexxUIDB.unitFrameAuraDevPreviewBars = v and true or false
+    refreshAuraLayout()
+  end, 520)
+  cbPrevBars:SetPoint("TOPLEFT", cbPrevDebuff, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbPrevBars)
+
+  local slBuffX = O.MakeIntSlider(panelAuras, "Buff row: offset left / right (px)", -80, 80, 1, function()
+    return _G.FlexxUIDB.playerAuraBuffAnchorX or 0
+  end, function(v)
+    _G.FlexxUIDB.playerAuraBuffAnchorX = v
+    refreshAuraLayout()
+  end)
+  slBuffX:SetPoint("TOPLEFT", cbPrevBars, "BOTTOMLEFT", 0, -14)
+  table.insert(O.state.controls, slBuffX)
+
+  local slBuffY = O.MakeIntSlider(panelAuras, "Buff row: offset up / down (px)", -80, 80, 1, function()
+    return _G.FlexxUIDB.playerAuraBuffAnchorY or 36
+  end, function(v)
+    _G.FlexxUIDB.playerAuraBuffAnchorY = v
+    refreshAuraLayout()
+  end)
+  slBuffY:SetPoint("TOPLEFT", slBuffX, "BOTTOMLEFT", 0, -4)
+  table.insert(O.state.controls, slBuffY)
+
+  local slDebuffX = O.MakeIntSlider(panelAuras, "Debuff icons / timer bars: offset left / right (px)", -80, 80, 1, function()
+    return _G.FlexxUIDB.playerAuraDebuffAnchorX or 0
+  end, function(v)
+    _G.FlexxUIDB.playerAuraDebuffAnchorX = v
+    refreshAuraLayout()
+  end)
+  slDebuffX:SetPoint("TOPLEFT", slBuffY, "BOTTOMLEFT", 0, -4)
+  table.insert(O.state.controls, slDebuffX)
+
+  local slDebuffY = O.MakeIntSlider(panelAuras, "Debuff icons / timer bars: offset up / down (px)", -80, 80, 1, function()
+    return _G.FlexxUIDB.playerAuraDebuffAnchorY or 4
+  end, function(v)
+    _G.FlexxUIDB.playerAuraDebuffAnchorY = v
+    refreshAuraLayout()
+  end)
+  slDebuffY:SetPoint("TOPLEFT", slDebuffX, "BOTTOMLEFT", 0, -4)
+  table.insert(O.state.controls, slDebuffY)
+
+  O.state.applyDevSubTab = function()
+    O.EnsureDB()
+    local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsDevSubTab) or "cast"
+    if key ~= "cast" and key ~= "auras" then key = "cast" end
+    panelCast:SetShown(key == "cast")
+    panelAuras:SetShown(key == "auras")
+  end
+  O.state.applyDevSubTab()
+
+  -- Scroll content must have height; devCard must fill it or the frame stays 0 tall and ClipsChildren hides everything.
+  local contentH = math.max(DEV_PANEL_CAST, DEV_PANEL_AURAS) + 40
+  content:SetHeight(contentH)
+  devCard:ClearAllPoints()
+  devCard:SetAllPoints(content)
+
+  if O.state.pageHolders and O.state.pageHolders.dev and O.state.pageHolders.dev.RefreshScroll then
+    O.state.pageHolders.dev:RefreshScroll()
+  end
 end
 
 function O.BuildUnitPlayerPage(content)
@@ -546,15 +659,17 @@ function O.BuildUnitPlayerPage(content)
   local btnHealth = O.MakePlayerSubTabButton(playerNav, "Health bar", "health")
   local btnPower = O.MakePlayerSubTabButton(playerNav, "Resource bar", "power", btnHealth)
   local btnClassBar = O.MakePlayerSubTabButton(playerNav, "Class bar", "classbar", btnPower)
-  local btnCast = O.MakePlayerSubTabButton(playerNav, "Cast bar", "cast", btnClassBar)
+  local btnAuras = O.MakePlayerSubTabButton(playerNav, "Auras", "auras", btnClassBar)
+  local btnCast = O.MakePlayerSubTabButton(playerNav, "Cast bar", "cast", btnAuras)
   local btnGeneral = O.MakePlayerSubTabButton(playerNav, "Name & text", "general", btnCast)
 
   local panelHealth = CreateFrame("Frame", nil, playerCard)
   local panelPower = CreateFrame("Frame", nil, playerCard)
   local panelClassBar = CreateFrame("Frame", nil, playerCard)
+  local panelAuras = CreateFrame("Frame", nil, playerCard)
   local panelCast = CreateFrame("Frame", nil, playerCard)
   local panelGeneral = CreateFrame("Frame", nil, playerCard)
-  for _, p in ipairs({ panelHealth, panelPower, panelClassBar, panelCast, panelGeneral }) do
+  for _, p in ipairs({ panelHealth, panelPower, panelClassBar, panelAuras, panelCast, panelGeneral }) do
     p:SetPoint("TOPLEFT", playerNav, "BOTTOMLEFT", 0, -10)
     p:SetPoint("TOPRIGHT", playerNav, "BOTTOMRIGHT", 0, -10)
   end
@@ -562,6 +677,7 @@ function O.BuildUnitPlayerPage(content)
   panelHealth:SetHeight(PLAYER_SUBTAB_HEIGHT.health)
   panelPower:SetHeight(PLAYER_SUBTAB_HEIGHT.power)
   panelClassBar:SetHeight(PLAYER_SUBTAB_HEIGHT.classbar)
+  panelAuras:SetHeight(PLAYER_SUBTAB_HEIGHT.auras)
   panelCast:SetHeight(PLAYER_SUBTAB_HEIGHT.cast)
   panelGeneral:SetHeight(PLAYER_SUBTAB_HEIGHT.general)
 
@@ -644,8 +760,28 @@ function O.BuildUnitPlayerPage(content)
   local rightP = CreateFrame("Frame", nil, panelPower)
   rightP:SetPoint("TOPLEFT", 332, 0); rightP:SetSize(320, PLAYER_SUBTAB_HEIGHT.power)
 
+  local lblLayout = ArtFont(leftP, "GameFontHighlight")
+  lblLayout:SetPoint("TOPLEFT", 0, 0)
+  lblLayout:SetText("Layout")
+
+  local rbPowerLayoutFull = O.MakeRadio(leftP, "Full width below health", function() return _G.FlexxUIDB.powerBarLayout or "full" end, "full", function(mode)
+    _G.FlexxUIDB.powerBarLayout = mode
+    if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end
+    O.RefreshControls()
+  end)
+  rbPowerLayoutFull:SetPoint("TOPLEFT", lblLayout, "BOTTOMLEFT", 0, -8)
+  table.insert(O.state.controls, rbPowerLayoutFull)
+
+  local rbPowerLayoutInset = O.MakeRadio(leftP, "Inset (overlaps health)", function() return _G.FlexxUIDB.powerBarLayout or "full" end, "inset", function(mode)
+    _G.FlexxUIDB.powerBarLayout = mode
+    if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end
+    O.RefreshControls()
+  end)
+  rbPowerLayoutInset:SetPoint("TOPLEFT", rbPowerLayoutFull, "BOTTOMLEFT", 0, -8)
+  table.insert(O.state.controls, rbPowerLayoutInset)
+
   local lblBarFill = ArtFont(leftP, "GameFontHighlight")
-  lblBarFill:SetPoint("TOPLEFT", 0, 0)
+  lblBarFill:SetPoint("TOPLEFT", rbPowerLayoutInset, "BOTTOMLEFT", 0, -14)
   lblBarFill:SetText("Bar fill")
 
   local rbPowerStyleDef = O.MakeRadio(leftP, "Default (bright)", function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, "default", function(mode)
@@ -682,37 +818,25 @@ function O.BuildUnitPlayerPage(content)
   classBarHdr:SetPoint("TOPLEFT", 0, 0)
   classBarHdr:SetText("Class bar (combo, holy power, chi, shards, …)")
 
-  local classBarHint = ArtFont(leftCB, "GameFontHighlightSmall")
-  classBarHint:SetPoint("TOPLEFT", classBarHdr, "BOTTOMLEFT", 0, -6)
-  classBarHint:SetWidth(600)
-  classBarHint:SetJustifyH("LEFT")
-  classBarHint:SetText("Top pips on player and target unit frames. Same visibility and colors for both.")
-
   local cbClassPips = O.MakeToggle(leftCB, "Show class resource pips", function()
     return _G.FlexxUIDB.showSecondaryResource ~= false
   end, function(v)
     _G.FlexxUIDB.showSecondaryResource = v
     if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end
   end)
-  cbClassPips:SetPoint("TOPLEFT", classBarHint, "BOTTOMLEFT", 0, -12)
+  cbClassPips:SetPoint("TOPLEFT", classBarHdr, "BOTTOMLEFT", 0, -10)
   table.insert(O.state.controls, cbClassPips)
 
   local lblClassPipStyle = ArtFont(leftCB, "GameFontHighlight")
   lblClassPipStyle:SetPoint("TOPLEFT", cbClassPips, "BOTTOMLEFT", 0, -20)
   lblClassPipStyle:SetText("Pip colors")
 
-  local lblClassPipStyleHint = ArtFont(leftCB, "GameFontHighlightSmall")
-  lblClassPipStyleHint:SetPoint("TOPLEFT", lblClassPipStyle, "BOTTOMLEFT", 0, -4)
-  lblClassPipStyleHint:SetWidth(600)
-  lblClassPipStyleHint:SetJustifyH("LEFT")
-  lblClassPipStyleHint:SetText("Default: bright class tint. Dark: muted tint (matches dark resource bar style).")
-
   local rbClassBarDef = O.MakeRadio(leftCB, "Default (bright)", function() return _G.FlexxUIDB.classBarColorStyle or "default" end, "default", function(mode)
     _G.FlexxUIDB.classBarColorStyle = mode
     if ns.UnitFrames and ns.UnitFrames.SetClassBarColorStyle then ns.UnitFrames.SetClassBarColorStyle(mode) end
     O.RefreshControls()
   end)
-  rbClassBarDef:SetPoint("TOPLEFT", lblClassPipStyleHint, "BOTTOMLEFT", 0, -8)
+  rbClassBarDef:SetPoint("TOPLEFT", lblClassPipStyle, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbClassBarDef)
 
   local rbClassBarDark = O.MakeRadio(leftCB, "Dark (muted)", function() return _G.FlexxUIDB.classBarColorStyle or "default" end, "dark", function(mode)
@@ -722,6 +846,70 @@ function O.BuildUnitPlayerPage(content)
   end)
   rbClassBarDark:SetPoint("TOPLEFT", rbClassBarDef, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbClassBarDark)
+
+  -- ——— Auras tab (player frame only; target gets its own tab later) ———
+  local leftAura = CreateFrame("Frame", nil, panelAuras)
+  leftAura:SetPoint("TOPLEFT", 0, 0)
+  leftAura:SetPoint("TOPRIGHT", 0, 0)
+  leftAura:SetHeight(PLAYER_SUBTAB_HEIGHT.auras)
+
+  local auraIntro = ArtFont(leftAura, "GameFontHighlightSmall")
+  auraIntro:SetPoint("TOPLEFT", 0, 0)
+  auraIntro:SetText("Player unit frame")
+
+  local buffCard = CreateFrame("Frame", nil, leftAura, "BackdropTemplate")
+  O.StyleSurface(buffCard, 0.78)
+  buffCard:SetBackdropBorderColor(0, 0, 0, 0)
+  buffCard:SetPoint("TOPLEFT", auraIntro, "BOTTOMLEFT", 0, -12)
+  buffCard:SetPoint("TOPRIGHT", leftAura, "TOPRIGHT", 0, 0)
+  buffCard:SetHeight(92)
+
+  local hdrBuff = ArtFont(buffCard, "GameFontHighlight")
+  hdrBuff:SetPoint("TOPLEFT", 12, -12)
+  hdrBuff:SetText("Buffs")
+
+  local cbAuraBuffs = O.MakeToggle(buffCard, "Show helpful aura icons", function()
+    return _G.FlexxUIDB.playerAuraBuffs ~= false
+  end, function(v)
+    if ns.UnitFrames and ns.UnitFrames.SetUnitFrameAuraBuffs then ns.UnitFrames.SetUnitFrameAuraBuffs(v) end
+  end, 400)
+  cbAuraBuffs:SetPoint("TOPLEFT", hdrBuff, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbAuraBuffs)
+
+  local debuffCard = CreateFrame("Frame", nil, leftAura, "BackdropTemplate")
+  O.StyleSurface(debuffCard, 0.78)
+  debuffCard:SetBackdropBorderColor(0, 0, 0, 0)
+  debuffCard:SetPoint("TOPLEFT", buffCard, "BOTTOMLEFT", 0, -12)
+  debuffCard:SetPoint("TOPRIGHT", buffCard, "TOPRIGHT", 0, 0)
+  debuffCard:SetHeight(100)
+
+  local hdrDebuff = ArtFont(debuffCard, "GameFontHighlight")
+  hdrDebuff:SetPoint("TOPLEFT", 12, -12)
+  hdrDebuff:SetText("Debuffs")
+
+  local function getDebuffDisplay()
+    O.EnsureDB()
+    local m = _G.FlexxUIDB.playerAuraDebuffDisplay
+    if m == "none" or m == "icons" or m == "bars" then return m end
+    return "icons"
+  end
+  local function setDebuffDisplay(mode)
+    if ns.UnitFrames and ns.UnitFrames.SetUnitFrameAuraDebuffDisplay then
+      ns.UnitFrames.SetUnitFrameAuraDebuffDisplay(mode)
+    else
+      O.EnsureDB()
+      _G.FlexxUIDB.playerAuraDebuffDisplay = mode
+    end
+    O.RefreshControls()
+  end
+
+  local ddDebuffDisplay = O.MakeEnumSelect(debuffCard, "Display", {
+    { value = "none", text = "None" },
+    { value = "icons", text = "Icons" },
+    { value = "bars", text = "Timer bars" },
+  }, getDebuffDisplay, setDebuffDisplay, 220)
+  ddDebuffDisplay:SetPoint("TOPLEFT", hdrDebuff, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, ddDebuffDisplay)
 
   -- ——— Cast bar tab ———
   local castTitle = ArtFont(panelCast, "GameFontHighlight")
@@ -768,18 +956,12 @@ function O.BuildUnitPlayerPage(content)
   castFillHdr:SetPoint("TOPLEFT", rbCastTxtClass, "BOTTOMLEFT", 0, -16)
   castFillHdr:SetText("Cast bar fill (progress)")
 
-  local castFillHint = ArtFont(panelCast, "GameFontHighlightSmall")
-  castFillHint:SetPoint("TOPLEFT", castFillHdr, "BOTTOMLEFT", 0, -4)
-  castFillHint:SetWidth(620)
-  castFillHint:SetJustifyH("LEFT")
-  castFillHint:SetText("Dark: zinc idle bar, muted channel green and cast orange. Separate from resource bar colors above.")
-
   local rbCastFillDef = O.MakeRadio(panelCast, "Default (bright)", function() return _G.FlexxUIDB.castBarFillStyle or "default" end, "default", function(mode)
     _G.FlexxUIDB.castBarFillStyle = mode
     if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
     O.RefreshControls()
   end)
-  rbCastFillDef:SetPoint("TOPLEFT", castFillHint, "BOTTOMLEFT", 0, -8)
+  rbCastFillDef:SetPoint("TOPLEFT", castFillHdr, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbCastFillDef)
 
   local rbCastFillDark = O.MakeRadio(panelCast, "Dark (muted)", function() return _G.FlexxUIDB.castBarFillStyle or "default" end, "dark", function(mode)
@@ -803,60 +985,21 @@ function O.BuildUnitPlayerPage(content)
   cbCastEnabled:SetPoint("TOPLEFT", castLblPlayer, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, cbCastEnabled)
 
-  local cbCastIdle = O.MakeToggle(panelCast, "Show empty player bar when not casting", function()
-    return _G.FlexxUIDB.castBarShowIdle == true
-  end, function(v)
-    _G.FlexxUIDB.castBarShowIdle = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbCastIdle:SetPoint("TOPLEFT", cbCastEnabled, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastIdle)
-
-  local cbCastPreview = O.MakeToggle(panelCast, "Layout preview (dev) — show empty bar to move or align", function()
-    return _G.FlexxUIDB.castBarLayoutPreview == true
-  end, function(v)
-    _G.FlexxUIDB.castBarLayoutPreview = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbCastPreview:SetPoint("TOPLEFT", cbCastIdle, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastPreview)
-
-  local cbHideBlizzCast = O.MakeToggle(panelCast, "Hide default Blizzard cast bar", function()
+  local cbHideBlizzCast = O.MakeToggle(panelCast, "Hide default Blizzard cast bars (player & target)", function()
     return _G.FlexxUIDB.hideBlizzardCastBar == true
   end, function(v)
     _G.FlexxUIDB.hideBlizzardCastBar = v and true or false
     if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
   end)
-  cbHideBlizzCast:SetPoint("TOPLEFT", cbCastPreview, "BOTTOMLEFT", 0, -10)
+  cbHideBlizzCast:SetPoint("TOPLEFT", cbCastEnabled, "BOTTOMLEFT", 0, -10)
   table.insert(O.state.controls, cbHideBlizzCast)
 
-  local castLblTarget = ArtFont(panelCast, "GameFontHighlightSmall")
-  castLblTarget:SetPoint("TOPLEFT", cbHideBlizzCast, "BOTTOMLEFT", 0, -18)
-  castLblTarget:SetText("Target (what your target is casting)")
-
-  local cbCastTarget = O.MakeToggle(panelCast, "Show target cast bar", function()
-    return _G.FlexxUIDB.castBarTargetEnabled ~= false
-  end, function(v)
-    _G.FlexxUIDB.castBarTargetEnabled = v
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
+  local btnResetPlayerCast = O.MakeFlatButton(panelCast, "Reset player cast bar position", 280, 24, function()
+    if ns.CastBar and ns.CastBar.ResetCastBarPosition then
+      ns.CastBar.ResetCastBarPosition("player")
+    end
   end)
-  cbCastTarget:SetPoint("TOPLEFT", castLblTarget, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, cbCastTarget)
-
-  local cbCastTargetIdle = O.MakeToggle(panelCast, "Show empty target bar when not casting", function()
-    return _G.FlexxUIDB.castBarTargetShowIdle == true
-  end, function(v)
-    _G.FlexxUIDB.castBarTargetShowIdle = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbCastTargetIdle:SetPoint("TOPLEFT", cbCastTarget, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastTargetIdle)
-
-  local castHint = ArtFont(panelCast, "GameFontHighlightSmall")
-  castHint:SetPoint("TOPLEFT", cbCastTargetIdle, "BOTTOMLEFT", 0, -16)
-  castHint:SetWidth(620)
-  castHint:SetJustifyH("LEFT")
-  castHint:SetText("Unlock the FlexxUI shell (when lock is off) to drag each bar. Player and target use different keys (|cffaaaaaa/castbar|r, |cffaaaaaa/castbar_target|r). Positions are saved separately from options. Layout preview shows empty player and target bars when you have a target. |cffaaaaaa/flexxui castpreview|r toggles preview.")
+  btnResetPlayerCast:SetPoint("TOPLEFT", cbHideBlizzCast, "BOTTOMLEFT", 0, -10)
 
   -- ——— Name & text tab ———
   local leftG = CreateFrame("Frame", nil, panelGeneral)
@@ -865,16 +1008,11 @@ function O.BuildUnitPlayerPage(content)
   local nameColorLabel = ArtFont(leftG, "GameFontHighlight")
   nameColorLabel:SetPoint("TOPLEFT", 0, 0)
   nameColorLabel:SetText("Name text color (player frame)")
-  local nameColorHint = ArtFont(leftG, "GameFontHighlightSmall")
-  nameColorHint:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -4)
-  nameColorHint:SetWidth(380)
-  nameColorHint:SetJustifyH("LEFT")
-  nameColorHint:SetText("Default: General → Fonts → Unit. Override only for this frame if you want.")
 
   local rbPInherit = O.MakeRadio(leftG, "Same as Fonts default", function() return getNameColorOverrideValue("player") end, "inherit", function(mode)
     setNameColorOverrideValue("player", mode)
   end)
-  rbPInherit:SetPoint("TOPLEFT", nameColorHint, "BOTTOMLEFT", 0, -8)
+  rbPInherit:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbPInherit)
   local rbPClass = O.MakeRadio(leftG, "Class color", function() return getNameColorOverrideValue("player") end, "class", function(mode)
     setNameColorOverrideValue("player", mode)
@@ -909,12 +1047,13 @@ function O.BuildUnitPlayerPage(content)
   local function applyPlayerSubTab()
     O.EnsureDB()
     local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsPlayerSubTab) or "health"
-    if key ~= "health" and key ~= "power" and key ~= "classbar" and key ~= "cast" and key ~= "general" then
+    if key ~= "health" and key ~= "power" and key ~= "classbar" and key ~= "auras" and key ~= "cast" and key ~= "general" then
       key = "health"
     end
     panelHealth:SetShown(key == "health")
     panelPower:SetShown(key == "power")
     panelClassBar:SetShown(key == "classbar")
+    panelAuras:SetShown(key == "auras")
     panelCast:SetShown(key == "cast")
     panelGeneral:SetShown(key == "general")
     local bodyH = PLAYER_SUBTAB_HEIGHT[key] or PLAYER_SUBTAB_HEIGHT.health
@@ -930,31 +1069,45 @@ function O.BuildUnitPlayerPage(content)
 end
 
 function O.BuildUnitTargetPage(content)
-  local card = CreateFrame("Frame", nil, content, "BackdropTemplate")
-  card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-  card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-  card:SetHeight(UNIT_PAGE_CONTENT_HEIGHT)
-  O.StyleSurface(card, 0.80)
-  card:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
-  card:SetBackdropBorderColor(0, 0, 0, 0)
-  local leftCol = CreateFrame("Frame", nil, card)
-  leftCol:SetPoint("TOPLEFT", 14, -14); leftCol:SetSize(320, UNIT_PAGE_CONTENT_HEIGHT - 40)
-  local rightCol = CreateFrame("Frame", nil, card)
-  rightCol:SetPoint("TOPLEFT", 346, -14); rightCol:SetSize(320, UNIT_PAGE_CONTENT_HEIGHT - 40)
+  local targetCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
+  targetCard:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+  targetCard:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+  O.StyleSurface(targetCard, 0.80)
+  targetCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
+  targetCard:SetBackdropBorderColor(0, 0, 0, 0)
+
+  local targetNav = CreateFrame("Frame", nil, targetCard)
+  targetNav:SetPoint("TOPLEFT", 14, -14)
+  targetNav:SetPoint("TOPRIGHT", -14, -14)
+  targetNav:SetHeight(32)
+
+  local btnTargetFrame = O.MakeTargetSubTabButton(targetNav, "Frame", "frame")
+  local btnTargetCast = O.MakeTargetSubTabButton(targetNav, "Cast bar", "cast", btnTargetFrame)
+
+  local panelFrame = CreateFrame("Frame", nil, targetCard)
+  local panelCast = CreateFrame("Frame", nil, targetCard)
+  panelFrame:SetPoint("TOPLEFT", targetNav, "BOTTOMLEFT", 0, -10)
+  panelFrame:SetPoint("TOPRIGHT", targetNav, "BOTTOMRIGHT", 0, -10)
+  panelCast:SetPoint("TOPLEFT", targetNav, "BOTTOMLEFT", 0, -10)
+  panelCast:SetPoint("TOPRIGHT", targetNav, "BOTTOMRIGHT", 0, -10)
+  panelFrame:SetHeight(TARGET_SUBTAB_HEIGHT.frame)
+  panelCast:SetHeight(TARGET_SUBTAB_HEIGHT.cast)
+
+  local leftCol = CreateFrame("Frame", nil, panelFrame)
+  leftCol:SetPoint("TOPLEFT", 0, 0)
+  leftCol:SetSize(320, TARGET_SUBTAB_HEIGHT.frame)
+  local rightCol = CreateFrame("Frame", nil, panelFrame)
+  rightCol:SetPoint("TOPLEFT", 332, 0)
+  rightCol:SetSize(320, TARGET_SUBTAB_HEIGHT.frame)
 
   local nameColorLabel = ArtFont(leftCol, "GameFontHighlight")
   nameColorLabel:SetPoint("TOPLEFT", 0, 0)
   nameColorLabel:SetText("Name text color (target frame)")
-  local nameColorHintT = ArtFont(leftCol, "GameFontHighlightSmall")
-  nameColorHintT:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -4)
-  nameColorHintT:SetWidth(300)
-  nameColorHintT:SetJustifyH("LEFT")
-  nameColorHintT:SetText("Default: General → Fonts → Unit. Override only for target if you want.")
 
   local rbTInherit = O.MakeRadio(leftCol, "Same as Fonts default", function() return getNameColorOverrideValue("target") end, "inherit", function(mode)
     setNameColorOverrideValue("target", mode)
   end)
-  rbTInherit:SetPoint("TOPLEFT", nameColorHintT, "BOTTOMLEFT", 0, -8)
+  rbTInherit:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbTInherit)
   local rbTClass = O.MakeRadio(leftCol, "Class color", function() return getNameColorOverrideValue("target") end, "class", function(mode)
     setNameColorOverrideValue("target", mode)
@@ -1051,7 +1204,43 @@ function O.BuildUnitTargetPage(content)
 
   addResourceBarColorSection(rightCol, lblResColorT, 8)
 
-  content:SetHeight(UNIT_PAGE_CONTENT_HEIGHT)
+  local tcHdr = ArtFont(panelCast, "GameFontHighlight")
+  tcHdr:SetPoint("TOPLEFT", 0, 0)
+  tcHdr:SetText("Target cast bar")
+
+  local cbCastTarget = O.MakeToggle(panelCast, "Show target cast bar", function()
+    return _G.FlexxUIDB.castBarTargetEnabled ~= false
+  end, function(v)
+    _G.FlexxUIDB.castBarTargetEnabled = v
+    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
+  end)
+  cbCastTarget:SetPoint("TOPLEFT", tcHdr, "BOTTOMLEFT", 0, -10)
+  table.insert(O.state.controls, cbCastTarget)
+
+  local btnResetTargetCast = O.MakeFlatButton(panelCast, "Reset target cast bar position", 280, 24, function()
+    if ns.CastBar and ns.CastBar.ResetCastBarPosition then
+      ns.CastBar.ResetCastBarPosition("target")
+    end
+  end)
+  btnResetTargetCast:SetPoint("TOPLEFT", cbCastTarget, "BOTTOMLEFT", 0, -10)
+
+  local function applyTargetSubTab()
+    O.EnsureDB()
+    local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsTargetSubTab) or "frame"
+    if key ~= "frame" and key ~= "cast" then
+      key = "frame"
+    end
+    panelFrame:SetShown(key == "frame")
+    panelCast:SetShown(key == "cast")
+    local bodyH = TARGET_SUBTAB_HEIGHT[key] or TARGET_SUBTAB_HEIGHT.frame
+    local navH = 32
+    local totalH = 14 + navH + 10 + bodyH + 24
+    targetCard:SetHeight(totalH)
+    content:SetHeight(totalH)
+    O.RefreshScrollPages()
+  end
+  O.state.applyTargetSubTab = applyTargetSubTab
+  applyTargetSubTab()
 end
 
 function O.BuildUnitPetPage(content)
@@ -1062,11 +1251,11 @@ function O.BuildUnitPetPage(content)
   O.StyleSurface(card, 0.80)
   card:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
   card:SetBackdropBorderColor(0, 0, 0, 0)
-  local t = ArtFont(card, "GameFontHighlightSmall")
-  t:SetPoint("TOPLEFT", 14, -14)
-  t:SetWidth(640)
-  t:SetJustifyH("LEFT")
-  t:SetText("Pet frame settings (bars, text, layout) will be added here.")
+  local hintPet = ArtFont(card, "GameFontHighlightSmall")
+  hintPet:SetPoint("TOPLEFT", 14, -14)
+  hintPet:SetWidth(640)
+  hintPet:SetJustifyH("LEFT")
+  hintPet:SetText("Coming soon.")
   content:SetHeight(120)
 end
 
