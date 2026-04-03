@@ -339,7 +339,9 @@ function O.MakeScalePercentSlider(parent, title, minPct, maxPct, stepPct, getSca
     thumb:SetSize(20, 20)
   end
 
+  local settingFromCode = false
   slider:SetScript("OnValueChanged", function(_, raw)
+    if settingFromCode then return end
     local v = math.max(minPct, math.min(maxPct, raw))
     if stepPct and stepPct > 0 then
       v = math.floor(v / stepPct + 0.5) * stepPct
@@ -354,7 +356,9 @@ function O.MakeScalePercentSlider(parent, title, minPct, maxPct, stepPct, getSca
     if type(s) ~= "number" or s ~= s then s = 1 end
     local pct = math.floor(s * 100 + 0.5)
     pct = math.max(minPct, math.min(maxPct, pct))
+    settingFromCode = true
     slider:SetValue(pct)
+    settingFromCode = false
     val:SetText(string.format("%d%%", pct))
   end
   return row
@@ -391,7 +395,9 @@ function O.MakeIntSlider(parent, title, minV, maxV, stepV, getInt, setInt)
     thumb:SetSize(20, 20)
   end
 
+  local settingFromCode = false
   slider:SetScript("OnValueChanged", function(_, raw)
+    if settingFromCode then return end
     local v = math.max(minV, math.min(maxV, raw))
     local st = stepV or 1
     if st > 0 then
@@ -409,7 +415,9 @@ function O.MakeIntSlider(parent, title, minV, maxV, stepV, getInt, setInt)
     if st > 0 then
       n = math.floor(n / st + 0.5) * st
     end
+    settingFromCode = true
     slider:SetValue(n)
+    settingFromCode = false
     val:SetText(tostring(math.floor(n + 0.5)))
   end
   return row
@@ -456,6 +464,50 @@ function O.MakeDevNavButton(parent, text, key, anchorTo)
   if not O.state.devNavButtons then O.state.devNavButtons = {} end
   O.state.devNavButtons[key] = b
   b:RefreshDevNav()
+  return b
+end
+
+--- Left column on Combat tab.
+function O.MakeCombatNavButton(parent, text, key, anchorTo)
+  local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+  b:SetSize(O.chromeButtonSize.w, O.chromeButtonSize.h)
+  O.StyleSurface(b, 0.96)
+  local label = (ns.Fonts and ns.Fonts.CreateFontString(b, "OVERLAY", "GameFontNormal", "all")) or b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  label:SetPoint("CENTER")
+  label:SetText(text or "")
+
+  function b:RefreshCombatNav()
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsCombatSubTab) or "overview"
+    local active = sub == key
+    if active then
+      b:SetBackdropColor(0.22, 0.30, 0.44, 0.96)
+    else
+      b:SetBackdropColor(0.14, 0.18, 0.25, 0.96)
+    end
+  end
+
+  b:SetScript("OnEnter", function(self)
+    local sub = (_G.FlexxUIDB and _G.FlexxUIDB.optionsCombatSubTab) or "overview"
+    local active = sub == key
+    if active then
+      self:SetBackdropColor(0.26, 0.34, 0.48, 0.96)
+    else
+      self:SetBackdropColor(0.18, 0.24, 0.34, 0.96)
+    end
+  end)
+  b:SetScript("OnLeave", function(self) self:RefreshCombatNav() end)
+  b:SetScript("OnClick", function()
+    if O.SelectCombatSubTab then O.SelectCombatSubTab(key) end
+  end)
+
+  if anchorTo then
+    b:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, -8)
+  else
+    b:SetPoint("TOPLEFT", 0, 0)
+  end
+  if not O.state.combatNavButtons then O.state.combatNavButtons = {} end
+  O.state.combatNavButtons[key] = b
+  b:RefreshCombatNav()
   return b
 end
 
@@ -514,8 +566,8 @@ function O.CreateScrollablePage(parent, skipHolderBackdrop)
   scroll:SetPoint("BOTTOMRIGHT", -scrollRightInset, 0)
 
   local scrollbar = CreateFrame("Slider", nil, holder, "BackdropTemplate")
-  scrollbar:SetPoint("TOPRIGHT", 0, -8)
-  scrollbar:SetPoint("BOTTOMRIGHT", 0, 8)
+  scrollbar:SetPoint("TOPRIGHT", 0, -30)
+  scrollbar:SetPoint("BOTTOMRIGHT", 0, 30)
   scrollbar:SetWidth(12)
   O.StyleSurface(scrollbar, 0.35)
   local thumb = scrollbar:CreateTexture(nil, "OVERLAY")
@@ -535,22 +587,53 @@ function O.CreateScrollablePage(parent, skipHolderBackdrop)
   content:EnableMouse(true)
   scroll:SetScrollChild(content)
 
+  local function ScrollByStep(sign)
+    local minVal, maxVal = scrollbar:GetMinMaxValues()
+    if maxVal <= minVal then return end
+    local step = 36
+    local newVal = scrollbar:GetValue() + (sign * step)
+    if newVal < minVal then newVal = minVal end
+    if newVal > maxVal then newVal = maxVal end
+    scrollbar:SetValue(newVal)
+  end
+
+  local arrowUp = CreateFrame("Button", nil, holder, "BackdropTemplate")
+  arrowUp:SetSize(16, 16)
+  arrowUp:SetPoint("TOPRIGHT", 2, -8)
+  O.StyleSurface(arrowUp, 0.96)
+  arrowUp:SetBackdropColor(0.14, 0.18, 0.25, 0.96)
+  local upText = (ns.Fonts and ns.Fonts.CreateFontString(arrowUp, "OVERLAY", "GameFontNormalSmall", "all")) or arrowUp:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  upText:SetPoint("CENTER", 0, -1)
+  upText:SetText("^")
+  arrowUp:SetScript("OnEnter", function(self) self:SetBackdropColor(0.18, 0.24, 0.34, 0.96) end)
+  arrowUp:SetScript("OnLeave", function(self) self:SetBackdropColor(0.14, 0.18, 0.25, 0.96) end)
+  arrowUp:SetScript("OnClick", function() ScrollByStep(-1) end)
+
+  local arrowDown = CreateFrame("Button", nil, holder, "BackdropTemplate")
+  arrowDown:SetSize(16, 16)
+  arrowDown:SetPoint("BOTTOMRIGHT", 2, 8)
+  O.StyleSurface(arrowDown, 0.96)
+  arrowDown:SetBackdropColor(0.14, 0.18, 0.25, 0.96)
+  local downText = (ns.Fonts and ns.Fonts.CreateFontString(arrowDown, "OVERLAY", "GameFontNormalSmall", "all")) or arrowDown:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  downText:SetPoint("CENTER", 0, 1)
+  downText:SetText("v")
+  arrowDown:SetScript("OnEnter", function(self) self:SetBackdropColor(0.18, 0.24, 0.34, 0.96) end)
+  arrowDown:SetScript("OnLeave", function(self) self:SetBackdropColor(0.14, 0.18, 0.25, 0.96) end)
+  arrowDown:SetScript("OnClick", function() ScrollByStep(1) end)
+
   local function UpdateScrollRange()
     local viewWidth = scroll:GetWidth()
     if viewWidth and viewWidth > 0 then content:SetWidth(viewWidth) end
     local range = math.max(0, content:GetHeight() - scroll:GetHeight())
     scrollbar:SetMinMaxValues(0, range)
     if scrollbar:GetValue() > range then scrollbar:SetValue(range) end
+    local hasRange = range > 0
+    arrowUp:SetAlpha(hasRange and 1 or 0.45)
+    arrowDown:SetAlpha(hasRange and 1 or 0.45)
   end
 
   local function OnScrollMouseWheel(_, delta)
-    local minVal, maxVal = scrollbar:GetMinMaxValues()
-    if maxVal <= minVal then return end
-    local step = 36
-    local newVal = scrollbar:GetValue() - (delta * step)
-    if newVal < minVal then newVal = minVal end
-    if newVal > maxVal then newVal = maxVal end
-    scrollbar:SetValue(newVal)
+    ScrollByStep(-delta)
   end
 
   holder:SetScript("OnSizeChanged", UpdateScrollRange)
@@ -575,6 +658,8 @@ function O.CreateScrollablePage(parent, skipHolderBackdrop)
 
   holder.content = content
   holder.scrollbar = scrollbar
+  holder.scrollUpButton = arrowUp
+  holder.scrollDownButton = arrowDown
   return holder
 end
 

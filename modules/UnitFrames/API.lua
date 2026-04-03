@@ -118,7 +118,7 @@ end
 function UF.SetHealthTextFollowNameColor(enabled)
   UF.EnsureDB()
   if enabled then
-    _G.FlexxUIDB.healthTextColorMode = "name"
+    _G.FlexxUIDB.healthTextColorMode = "class"
   end
   for _, f in pairs(UF.state.frames) do
     if f then UF.UpdateUnitFrame(f) end

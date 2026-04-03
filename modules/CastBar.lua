@@ -38,6 +38,52 @@ function CB.EnsureDB()
   if _G.FlexxUIDB.castBarFillStyle == nil then _G.FlexxUIDB.castBarFillStyle = "default" end
 end
 
+--- Default cast bars are secure; Hide/Show from hooks or option clicks (tainted) causes "Interface action failed" / addon blocked.
+local function HideBlizzardCastBarFrame(bar)
+  if not bar then return end
+  if InCombatLockdown and InCombatLockdown() then
+    pcall(function()
+      bar:SetAlpha(0)
+    end)
+    pcall(function()
+      if bar.EnableMouse then
+        bar:EnableMouse(false)
+      end
+    end)
+  else
+    pcall(function()
+      bar:SetAlpha(1)
+    end)
+    pcall(function()
+      bar:Hide()
+    end)
+  end
+end
+
+local function ShowBlizzardCastBarFrame(bar)
+  if not bar then return end
+  pcall(function()
+    bar:SetAlpha(1)
+  end)
+  pcall(function()
+    if bar.EnableMouse then
+      bar:EnableMouse(true)
+    end
+  end)
+  pcall(function()
+    bar:Show()
+  end)
+end
+
+local function HookHideBlizzardCastOnShow(bar)
+  if not bar or not bar.HookScript or bar._flexxUICastHook then return end
+  bar._flexxUICastHook = true
+  bar:HookScript("OnShow", function(self)
+    if not (_G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar) then return end
+    HideBlizzardCastBarFrame(self)
+  end)
+end
+
 local function CastBarFillRGB(kind)
   CB.EnsureDB()
   local dark = (_G.FlexxUIDB.castBarFillStyle or "default") == "dark"
@@ -57,21 +103,36 @@ end
 local function ApplyHideBlizzardCastBar()
   CB.EnsureDB()
   local hide = _G.FlexxUIDB.hideBlizzardCastBar
+  if InCombatLockdown and InCombatLockdown() then
+    if not CB.state.blizzardRetry then
+      local rf = CreateFrame("Frame")
+      rf:SetScript("OnEvent", function(self, event)
+        if event ~= "PLAYER_REGEN_ENABLED" then return end
+        self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        ApplyHideBlizzardCastBar()
+      end)
+      CB.state.blizzardRetry = rf
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, function()
+        local rf = CB.state.blizzardRetry
+        if rf and rf.RegisterEvent then
+          rf:RegisterEvent("PLAYER_REGEN_ENABLED")
+        end
+      end)
+    else
+      CB.state.blizzardRetry:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    return
+  end
 
   local bar = _G.PlayerCastingBar
   if bar and bar.HookScript then
     if hide then
-      bar:Hide()
-      if not bar._flexxUICastHook then
-        bar._flexxUICastHook = true
-        bar:HookScript("OnShow", function(self)
-          if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar then
-            self:Hide()
-          end
-        end)
-      end
+      HideBlizzardCastBarFrame(bar)
+      HookHideBlizzardCastOnShow(bar)
     else
-      bar:Show()
+      ShowBlizzardCastBarFrame(bar)
     end
   end
 
@@ -79,22 +140,32 @@ local function ApplyHideBlizzardCastBar()
   local tbar = _G.TargetFrameSpellBar
   if tbar and tbar.HookScript then
     if hide then
-      tbar:Hide()
+      HideBlizzardCastBarFrame(tbar)
       if not tbar._flexxUITargetCastHook then
         tbar._flexxUITargetCastHook = true
         tbar:HookScript("OnShow", function(self)
           if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzardCastBar then
-            self:Hide()
+            HideBlizzardCastBarFrame(self)
           end
         end)
       end
     else
+      ShowBlizzardCastBarFrame(tbar)
       pcall(function()
         if _G.TargetFrame_Update and _G.TargetFrame then
           _G.TargetFrame_Update(_G.TargetFrame)
         end
       end)
     end
+  end
+end
+
+--- Options / UI paths are tainted; defer Blizzard frame changes to next frame.
+local function ScheduleApplyHideBlizzardCastBar()
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, ApplyHideBlizzardCastBar)
+  else
+    ApplyHideBlizzardCastBar()
   end
 end
 
@@ -330,7 +401,7 @@ function CB.RefreshFromOptions()
   if CB.state.frameTarget then
     UpdateCastBarFrame(CB.state.frameTarget)
   end
-  ApplyHideBlizzardCastBar()
+  ScheduleApplyHideBlizzardCastBar()
 end
 
 --- Default anchor for player or target cast bar (same rules as initial Create).
@@ -456,5 +527,5 @@ function CB.Create()
   CB.EnsureDB()
   UpdateCastBarFrame(CB.state.frame)
   UpdateCastBarFrame(CB.state.frameTarget)
-  ApplyHideBlizzardCastBar()
+  ScheduleApplyHideBlizzardCastBar()
 end

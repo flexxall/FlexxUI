@@ -13,7 +13,6 @@ UF.const = UF.const or {
     ["none"] = "Interface\\Buttons\\WHITE8x8",
     ["default"] = "Interface\\TargetingFrame\\UI-StatusBar",
     ["flat"] = "Interface\\Buttons\\WHITE8x8",
-    ["smooth"] = "Interface\\Buttons\\WHITE8x8",
   },
   colorModes = {
     class = true,
@@ -26,9 +25,10 @@ UF.const = UF.const or {
     value = true,
   },
   healthTextColorModes = {
-    name = true,
-    classdark = true,
-    solid = true,
+    class = true,
+    white = true,
+    yellow = true,
+    dark = true,
   },
   nameTextColorModes = {
     class = true,
@@ -62,13 +62,18 @@ function UF.EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
   if _G.FlexxUIDB.hideBlizzard == nil then _G.FlexxUIDB.hideBlizzard = false end
   if _G.FlexxUIDB.healthBarTexture == nil then _G.FlexxUIDB.healthBarTexture = "default" end
-  if _G.FlexxUIDB.healthBarTexture == "dull" then _G.FlexxUIDB.healthBarTexture = "smooth" end
+  if _G.FlexxUIDB.healthBarTexture == "dull" or _G.FlexxUIDB.healthBarTexture == "smooth" then _G.FlexxUIDB.healthBarTexture = "flat" end
+  if not UF.const.textures[_G.FlexxUIDB.healthBarTexture] then
+    _G.FlexxUIDB.healthBarTexture = "default"
+  end
   if _G.FlexxUIDB.playerHealthColorMode == nil then _G.FlexxUIDB.playerHealthColorMode = "class" end
   if _G.FlexxUIDB.healthTextMode == nil then _G.FlexxUIDB.healthTextMode = "percent" end
-  if _G.FlexxUIDB.healthTextColorMode == nil then _G.FlexxUIDB.healthTextColorMode = "name" end
-  if _G.FlexxUIDB.healthTextColorMode == "dynamic" then _G.FlexxUIDB.healthTextColorMode = "name" end
+  if _G.FlexxUIDB.healthTextColorMode == nil then _G.FlexxUIDB.healthTextColorMode = "class" end
+  if _G.FlexxUIDB.healthTextColorMode == "dynamic" or _G.FlexxUIDB.healthTextColorMode == "name" then _G.FlexxUIDB.healthTextColorMode = "class" end
+  if _G.FlexxUIDB.healthTextColorMode == "classdark" then _G.FlexxUIDB.healthTextColorMode = "dark" end
+  if _G.FlexxUIDB.healthTextColorMode == "solid" then _G.FlexxUIDB.healthTextColorMode = "white" end
   if _G.FlexxUIDB.healthTextFollowNameColor == true then
-    _G.FlexxUIDB.healthTextColorMode = "name"
+    _G.FlexxUIDB.healthTextColorMode = "class"
   end
   _G.FlexxUIDB.healthTextFollowNameColor = nil
   if _G.FlexxUIDB.nameTextColorMode == nil then _G.FlexxUIDB.nameTextColorMode = "class" end
@@ -77,7 +82,10 @@ function UF.EnsureDB()
   end
   if _G.FlexxUIDB.showHealthBarOverlays == nil then _G.FlexxUIDB.showHealthBarOverlays = true end
   if _G.FlexxUIDB.unitFrameBackdropShow == nil then _G.FlexxUIDB.unitFrameBackdropShow = true end
-  if _G.FlexxUIDB.showSecondaryResource == nil then _G.FlexxUIDB.showSecondaryResource = true end
+  if _G.FlexxUIDB.showSecondaryResource == nil then
+    local combatEnabled = _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.enabled == true
+    _G.FlexxUIDB.showSecondaryResource = not combatEnabled
+  end
   if _G.FlexxUIDB.showUnitFrameName == nil then _G.FlexxUIDB.showUnitFrameName = true end
   if _G.FlexxUIDB.healthTextAlign == nil then _G.FlexxUIDB.healthTextAlign = "right" end
   if _G.FlexxUIDB.powerTextShow == nil then _G.FlexxUIDB.powerTextShow = true end

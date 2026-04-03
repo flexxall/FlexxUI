@@ -156,23 +156,6 @@ local function GetBlizzardPowerTextPercentString(unit)
   return nil
 end
 
-local function ApplyHealthTextColor(f)
-  if not f or not f.healthText then return end
-  local mode = (_G.FlexxUIDB and _G.FlexxUIDB.healthTextColorMode) or "name"
-
-  if mode == "solid" then
-    f.healthText:SetTextColor(0.95, 0.95, 0.95)
-    return
-  end
-  if mode == "name" then
-    local r, g, b = UF.GetEffectiveNameTextColorRGB(f)
-    f.healthText:SetTextColor(r, g, b)
-    return
-  end
-  local br, bg, bb = f.health:GetStatusBarColor()
-  f.healthText:SetTextColor(br * 0.55, bg * 0.55, bb * 0.55)
-end
-
 local function GetEffectiveNameTextColorMode(f)
   local db = _G.FlexxUIDB
   if not db then return "class" end
@@ -191,14 +174,14 @@ local function GetEffectiveNameTextColorMode(f)
 end
 
 --- Class-colored names sit on busy health fills; a stronger shadow keeps them readable.
-local function ApplyNameTextShadow(f, strength)
-  if not f or not f.name then return end
+local function ApplyTextShadow(fs, strength)
+  if not fs then return end
   if strength == "class" then
-    f.name:SetShadowOffset(2, -2)
-    f.name:SetShadowColor(0, 0, 0, 0.96)
+    fs:SetShadowOffset(2, -2)
+    fs:SetShadowColor(0, 0, 0, 0.96)
   else
-    f.name:SetShadowOffset(1, -1)
-    f.name:SetShadowColor(0, 0, 0, 0.85)
+    fs:SetShadowOffset(1, -1)
+    fs:SetShadowColor(0, 0, 0, 0.85)
   end
 end
 
@@ -223,19 +206,41 @@ function UF.GetEffectiveNameTextColorRGB(f)
   return 0.95, 0.95, 0.95
 end
 
+--- Shared unit-text styling helper for DRY color/shadow behavior across name/health/power text.
+function UF.ApplyUnitTextStyle(fs, f, mode)
+  if not fs then return end
+  mode = mode or "class"
+  local r, g, b
+  if mode == "white" then
+    r, g, b = 0.95, 0.95, 0.95
+  elseif mode == "yellow" then
+    r, g, b = 1, 0.88, 0.35
+  elseif mode == "dark" then
+    r, g, b = 0.08, 0.08, 0.1
+  else
+    r, g, b = UF.GetEffectiveNameTextColorRGB(f)
+    mode = "class"
+  end
+  fs:SetTextColor(r, g, b)
+
+  local classShadow = false
+  if mode == "class" and f and f.unit and UnitIsPlayer(f.unit) then
+    local _, class = UnitClass(f.unit)
+    classShadow = class and RAID_CLASS_COLORS[class] ~= nil
+  end
+  ApplyTextShadow(fs, classShadow and "class" or "default")
+end
+
+local function ApplyHealthTextColor(f)
+  if not f or not f.healthText then return end
+  local mode = (_G.FlexxUIDB and _G.FlexxUIDB.healthTextColorMode) or "class"
+  UF.ApplyUnitTextStyle(f.healthText, f, mode)
+end
+
 local function ApplyNameTextColor(f)
   if not f or not f.name then return end
-  local r, g, b = UF.GetEffectiveNameTextColorRGB(f)
-  f.name:SetTextColor(r, g, b)
   local mode = GetEffectiveNameTextColorMode(f)
-  if mode == "class" and UnitIsPlayer(f.unit) then
-    local _, class = UnitClass(f.unit)
-    if class and RAID_CLASS_COLORS[class] then
-      ApplyNameTextShadow(f, "class")
-      return
-    end
-  end
-  ApplyNameTextShadow(f, "default")
+  UF.ApplyUnitTextStyle(f.name, f, mode)
 end
 
 function UF.ApplyUnitFrameNameAndHealthLayout(f)
@@ -293,8 +298,7 @@ end
 
 local function ApplyPowerTextColorPreset(fs, preset, f)
   if preset == "class_color" and f then
-    local r, g, b = UF.GetEffectiveNameTextColorRGB(f)
-    fs:SetTextColor(r, g, b)
+    UF.ApplyUnitTextStyle(fs, f, "class")
   elseif preset == "power_bar" and f and f.power then
     local r, g, b = f.power:GetStatusBarColor()
     fs:SetTextColor(r, g, b)
@@ -684,16 +688,16 @@ function UF.UpdateHealthBarOverlays(f)
 
   incomingBar:ClearAllPoints()
   incomingBar:SetOrientation("HORIZONTAL")
+  -- 2 px shorter than health fill; anchored to current-health right edge (same as full bar height minus 1 px top/bottom inset).
   if tex then
-    incomingBar:SetPoint("TOPLEFT", tex, "TOPRIGHT", 0, 0)
-    incomingBar:SetPoint("BOTTOMLEFT", tex, "BOTTOMRIGHT", 0, 0)
+    incomingBar:SetPoint("TOPLEFT", tex, "TOPRIGHT", 0, 1)
+    incomingBar:SetPoint("BOTTOMLEFT", tex, "BOTTOMRIGHT", 0, -1)
     incomingBar:SetWidth(barW)
   else
-    incomingBar:SetPoint("TOPLEFT", layer, "TOPLEFT", x0, 0)
-    incomingBar:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x0, 0)
+    incomingBar:SetPoint("TOPLEFT", layer, "TOPLEFT", x0, -1)
+    incomingBar:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x0, 1)
     incomingBar:SetWidth(barW)
   end
-  incomingBar:SetHeight(barH)
 
   local incomingOk, absorbOk = false, false
   local calc = f._healPredCalc
@@ -733,16 +737,16 @@ function UF.UpdateHealthBarOverlays(f)
 
   absorbBar:ClearAllPoints()
   absorbBar:SetOrientation("HORIZONTAL")
+  -- 2 px shorter than incoming strip (4 px shorter than health) when anchored past incoming; else 4 px shorter than health fill.
   if anchorForAbsorb then
-    absorbBar:SetPoint("TOPLEFT", anchorForAbsorb, "TOPRIGHT", 0, 0)
-    absorbBar:SetPoint("BOTTOMLEFT", anchorForAbsorb, "BOTTOMRIGHT", 0, 0)
+    absorbBar:SetPoint("TOPLEFT", anchorForAbsorb, "TOPRIGHT", 0, 1)
+    absorbBar:SetPoint("BOTTOMLEFT", anchorForAbsorb, "BOTTOMRIGHT", 0, -1)
     absorbBar:SetWidth(barW)
   else
-    absorbBar:SetPoint("TOPLEFT", layer, "TOPLEFT", x0, 0)
-    absorbBar:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x0, 0)
+    absorbBar:SetPoint("TOPLEFT", layer, "TOPLEFT", x0, -2)
+    absorbBar:SetPoint("BOTTOMLEFT", layer, "BOTTOMLEFT", x0, 2)
     absorbBar:SetWidth(barW)
   end
-  absorbBar:SetHeight(barH)
 
   if calc and UnitGetDetailedHealPrediction then
     absorbOk = pcall(function()
@@ -779,10 +783,9 @@ function UF.UpdateHealthBarOverlays(f)
   local wHab = HealthStripWidth(healAbsorbN, maxH, barW)
   if healAbsorbTex and wHab > 0 then
     healAbsorbTex:ClearAllPoints()
-    healAbsorbTex:SetPoint("TOPRIGHT", layer, "TOPRIGHT", 0, 0)
-    healAbsorbTex:SetPoint("BOTTOMRIGHT", layer, "BOTTOMRIGHT", 0, 0)
+    healAbsorbTex:SetPoint("TOPRIGHT", layer, "TOPRIGHT", 0, -2)
+    healAbsorbTex:SetPoint("BOTTOMRIGHT", layer, "BOTTOMRIGHT", 0, 2)
     healAbsorbTex:SetWidth(wHab)
-    healAbsorbTex:SetHeight(barH)
     healAbsorbTex:Show()
   elseif healAbsorbTex then
     healAbsorbTex:Hide()
@@ -846,7 +849,9 @@ end
 
 function UF.UpdatePlayerResting(f)
   if not f or f.unit ~= "player" or not f.restingIcons then return end
-  if IsResting() then
+  --- IsResting() stays true in rested areas while fighting (e.g. dummies); hide zzz whenever in combat.
+  local showRest = IsResting() and not (UnitAffectingCombat and UnitAffectingCombat("player"))
+  if showRest then
     if not f.restingActive then
       f.restingActive = true
       for _, fs in ipairs(f.restingIcons) do fs:Show() end
@@ -869,14 +874,86 @@ function UF.UpdatePlayerResting(f)
   end
 end
 
+local function EnsureUnitFrameVisibilityRetry()
+  if UF.state._unitFrameVisRetry then return UF.state._unitFrameVisRetry end
+  local rf = CreateFrame("Frame")
+  rf:SetScript("OnEvent", function(self, event)
+    if event ~= "PLAYER_REGEN_ENABLED" then return end
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    for _, fr in pairs(UF.state.frames or {}) do
+      if fr and fr._flexxPendingShown ~= nil then
+        local want = fr._flexxPendingShown == true
+        fr._flexxPendingShown = nil
+        if fr.unit == "target" then
+          --- Secure target button: avoid Hide/Show here; alpha + mouse only (same as SetUnitFrameShownSafe OOC).
+          if not fr:IsShown() then fr:Show() end
+          pcall(function() fr:SetAlpha(want and 1 or 0) end)
+          pcall(function() fr:EnableMouse(want and true or false) end)
+        elseif want then
+          if not fr:IsShown() then fr:Show() end
+          pcall(function() fr:SetAlpha(1) end)
+          pcall(function() fr:EnableMouse(true) end)
+        else
+          if fr:IsShown() then fr:Hide() end
+          pcall(function() fr:SetAlpha(1) end)
+          pcall(function() fr:EnableMouse(false) end)
+        end
+      end
+    end
+  end)
+  UF.state._unitFrameVisRetry = rf
+  return rf
+end
+
+local function SetUnitFrameShownSafe(f, shown)
+  if not f then return end
+  if InCombatLockdown and InCombatLockdown() then
+    f._flexxPendingShown = shown and true or false
+    --- SecureUnitButtonTemplate (target): Show/Hide/EnableMouse are ADDON_ACTION_BLOCKED in combat.
+    --- Only adjust alpha in combat; full mouse/show state is replayed on PLAYER_REGEN_ENABLED.
+    if f.unit == "target" then
+      pcall(function() f:SetAlpha(shown and 1 or 0) end)
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, function()
+        local rf = EnsureUnitFrameVisibilityRetry()
+        if rf and rf.RegisterEvent then
+          rf:RegisterEvent("PLAYER_REGEN_ENABLED")
+        end
+      end)
+    else
+      EnsureUnitFrameVisibilityRetry():RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    return
+  end
+  f._flexxPendingShown = nil
+  if f.unit == "target" then
+    --- Keep target frame Shown at all times; use alpha 0 when no unit (never Hide — avoids Show() in combat).
+    if not f:IsShown() then f:Show() end
+    pcall(function() f:EnableMouse(shown and true or false) end)
+    pcall(function() f:SetAlpha(shown and 1 or 0) end)
+    return
+  end
+  pcall(function() f:SetAlpha(1) end)
+  pcall(function() f:EnableMouse(shown and true or false) end)
+  if shown then
+    if not f:IsShown() then f:Show() end
+  else
+    if f:IsShown() then f:Hide() end
+  end
+end
+
 function UF.UpdateUnitFrame(f)
   if not f or not f.unit then return end
   if not UnitExists(f.unit) then
-    f:Hide()
+    if f.healthText then f.healthText:SetText("") end
+    if f.name then f.name:SetText("") end
+    if f.powerText then f.powerText:SetText("") end
+    SetUnitFrameShownSafe(f, false)
     return
   end
 
-  f:Show()
+  SetUnitFrameShownSafe(f, true)
   if UF.UpdateTopResourceBar then UF.UpdateTopResourceBar(f) end
   UF.ApplyUnitFrameNameAndHealthLayout(f)
   UF.ApplyPowerTextLayout(f)

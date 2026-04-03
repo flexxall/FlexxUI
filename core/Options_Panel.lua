@@ -7,24 +7,58 @@ function O.Create()
 
   local panel = CreateFrame("Frame", "FlexxUI_Options", UIParent, "BackdropTemplate")
   O.state.panel = panel
-  panel:SetSize(860, 520)
+  panel:SetSize(960, 680)
   panel:SetPoint("CENTER", UIParent, "CENTER", 10, 0)
   panel:SetFrameStrata("DIALOG")
   panel:SetClampedToScreen(true)
   panel:SetMovable(true)
   panel:EnableMouse(true)
   panel:RegisterForDrag("LeftButton")
-  panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
-  panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+  -- Lock state applies to unit frames / movers only, not this panel.
+  local function PanelDragStart(self)
+    pcall(function() self:StartMoving() end)
+  end
+  local function PanelDragStop(self)
+    pcall(function() self:StopMovingOrSizing() end)
+  end
+  panel:SetScript("OnDragStart", PanelDragStart)
+  panel:SetScript("OnDragStop", PanelDragStop)
   panel:SetResizable(true)
-  if panel.SetResizeBounds then panel:SetResizeBounds(800, 360, 1200, 900) end
+  if panel.SetResizeBounds then panel:SetResizeBounds(860, 520, 1300, 980) end
   O.StyleSurface(panel, 0.97)
+  local function BringPanelToFront(self)
+    if self.SetFrameStrata then self:SetFrameStrata("FULLSCREEN_DIALOG") end
+    if self.Raise then pcall(function() self:Raise() end) end
+    if self.GetFrameLevel and self.SetFrameLevel then
+      local lvl = self:GetFrameLevel() or 0
+      self:SetFrameLevel(lvl + 40)
+    end
+    local dbg = ns.Debug and ns.Debug.state and ns.Debug.state.monitorFrame
+    if dbg and dbg.SetFrameStrata then
+      dbg:SetFrameStrata("DIALOG")
+    end
+  end
+  panel:HookScript("OnMouseDown", BringPanelToFront)
 
   local header = CreateFrame("Frame", nil, panel, "BackdropTemplate")
   header:SetPoint("TOPLEFT", 10, -10)
   header:SetPoint("TOPRIGHT", -10, -10)
   header:SetHeight(92)
   O.StyleSurface(header, 0.30)
+  if header.HookScript then
+    header:HookScript("OnMouseDown", function() BringPanelToFront(panel) end)
+  end
+  -- Shells/scroll areas cover the panel; drag must register on the header (title strip) so StartMoving runs.
+  header:SetMovable(false)
+  header:EnableMouse(true)
+  header:RegisterForDrag("LeftButton")
+  header:SetScript("OnDragStart", function()
+    BringPanelToFront(panel)
+    PanelDragStart(panel)
+  end)
+  header:SetScript("OnDragStop", function()
+    PanelDragStop(panel)
+  end)
 
   local addonVersion = ns.version or "dev"
   local logoPath = (ns.media and ns.media.logo) or "Interface\\AddOns\\FlexxUI\\Media\\FlexxUi.png"
@@ -67,7 +101,8 @@ function O.Create()
   tabGeneral:ClearAllPoints()
   tabGeneral:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 10, -10)
   local tabUnit = O.MakeTabButton(panel, "Unit Frames", "unit", tabGeneral)
-  O.MakeTabButton(panel, "Dev Settings", "dev", tabUnit)
+  local tabCombat = O.MakeTabButton(panel, "Combat", "combat", tabUnit)
+  O.MakeTabButton(panel, "Dev Settings", "dev", tabCombat)
 
   local pageBRX, pageBRY = -8, 36
   -- General: same shell + left nav + body as Unit Frames (Player / Target / Pet).
@@ -160,24 +195,76 @@ function O.Create()
   devNav:SetPoint("TOPLEFT", 0, 0)
   devNav:SetPoint("BOTTOMLEFT", 0, 0)
   devNav:SetWidth(O.chromeButtonSize.w)
-
-  O.MakeDevNavButton(devNav, "Cast bars", "cast")
-  O.MakeDevNavButton(devNav, "Auras", "auras", O.state.devNavButtons and O.state.devNavButtons.cast)
+  local btnDevCast = O.MakeDevNavButton(devNav, "Cast bars", "cast")
+  O.MakeDevNavButton(devNav, "Auras", "auras", btnDevCast)
 
   local devBody = CreateFrame("Frame", nil, devShell, "BackdropTemplate")
-  local devNavGap = 8
-  devBody:SetPoint("TOPLEFT", devShell, "TOPLEFT", O.chromeButtonSize.w + devNavGap, 0)
+  devBody:SetPoint("TOPLEFT", devShell, "TOPLEFT", O.chromeButtonSize.w + 8, 0)
   devBody:SetPoint("BOTTOMRIGHT", 0, 0)
   O.StyleSurface(devBody, 0.22)
   devBody:SetBackdropBorderColor(0, 0, 0, 0)
 
-  local devHolder = O.CreateScrollablePage(devBody, true)
-  devHolder:SetAllPoints()
-  O.state.pages.dev = devHolder.content
+  local devCastHolder = O.CreateScrollablePage(devBody, true)
+  devCastHolder:SetAllPoints()
+  O.state.pages.devCast = devCastHolder.content
+
+  local devAurasHolder = O.CreateScrollablePage(devBody, true)
+  devAurasHolder:SetAllPoints()
+  devAurasHolder:Hide()
+  O.state.pages.devAuras = devAurasHolder.content
 
   devShell.RefreshScroll = function()
-    if devHolder and devHolder.RefreshScroll then
-      devHolder:RefreshScroll()
+    if devCastHolder and devCastHolder.RefreshScroll then
+      devCastHolder:RefreshScroll()
+    end
+    if devAurasHolder and devAurasHolder.RefreshScroll then
+      devAurasHolder:RefreshScroll()
+    end
+  end
+
+  local combatShell = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+  O.StyleSurface(combatShell, 0.35)
+  combatShell:SetBackdropBorderColor(0, 0, 0, 0)
+  combatShell:SetPoint("TOPLEFT", tabGeneral, "BOTTOMLEFT", 0, -16)
+  combatShell:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", pageBRX, pageBRY)
+  O.state.pageHolders.combat = combatShell
+
+  local combatNav = CreateFrame("Frame", nil, combatShell)
+  combatNav:SetPoint("TOPLEFT", 0, 0)
+  combatNav:SetPoint("BOTTOMLEFT", 0, 0)
+  combatNav:SetWidth(O.chromeButtonSize.w)
+  local btnCombatOverview = O.MakeCombatNavButton(combatNav, "Overview", "overview")
+  local btnCombatDisplay = O.MakeCombatNavButton(combatNav, "Display", "display", btnCombatOverview)
+  O.MakeCombatNavButton(combatNav, "Tracking", "tracking", btnCombatDisplay)
+
+  local combatBody = CreateFrame("Frame", nil, combatShell, "BackdropTemplate")
+  combatBody:SetPoint("TOPLEFT", combatShell, "TOPLEFT", O.chromeButtonSize.w + 8, 0)
+  combatBody:SetPoint("BOTTOMRIGHT", 0, 0)
+  O.StyleSurface(combatBody, 0.22)
+  combatBody:SetBackdropBorderColor(0, 0, 0, 0)
+
+  local combatOverviewHolder = O.CreateScrollablePage(combatBody, true)
+  combatOverviewHolder:SetAllPoints()
+  O.state.pages.combatOverview = combatOverviewHolder.content
+
+  local combatDisplayHolder = O.CreateScrollablePage(combatBody, true)
+  combatDisplayHolder:SetAllPoints()
+  combatDisplayHolder:Hide()
+  O.state.pages.combatDisplay = combatDisplayHolder.content
+
+  local combatTrackingHolder = O.CreateScrollablePage(combatBody, true)
+  combatTrackingHolder:SetAllPoints()
+  combatTrackingHolder:Hide()
+  O.state.pages.combatTracking = combatTrackingHolder.content
+  combatShell.RefreshScroll = function()
+    if combatOverviewHolder and combatOverviewHolder.RefreshScroll then
+      combatOverviewHolder:RefreshScroll()
+    end
+    if combatDisplayHolder and combatDisplayHolder.RefreshScroll then
+      combatDisplayHolder:RefreshScroll()
+    end
+    if combatTrackingHolder and combatTrackingHolder.RefreshScroll then
+      combatTrackingHolder:RefreshScroll()
     end
   end
 
@@ -185,7 +272,29 @@ function O.Create()
   O.BuildUnitPlayerPage(O.state.pages.unitPlayer)
   O.BuildUnitTargetPage(O.state.pages.unitTarget)
   O.BuildUnitPetPage(O.state.pages.unitPet)
-  O.BuildDevPage(O.state.pages.dev)
+  O.BuildCombatPage(O.state.pages.combatOverview, "overview")
+  O.BuildCombatPage(O.state.pages.combatDisplay, "display")
+  O.BuildCombatPage(O.state.pages.combatTracking, "tracking")
+  O.BuildDevPage(O.state.pages.devCast, "cast")
+  O.BuildDevPage(O.state.pages.devAuras, "auras")
+
+  O.state.applyDevSubTab = function()
+    O.EnsureDB()
+    local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsDevSubTab) or "cast"
+    if key ~= "cast" and key ~= "auras" then key = "cast" end
+    devCastHolder:SetShown(key == "cast")
+    devAurasHolder:SetShown(key == "auras")
+  end
+  O.state.applyCombatSubTab = function()
+    O.EnsureDB()
+    local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsCombatSubTab) or "overview"
+    if key ~= "overview" and key ~= "display" and key ~= "tracking" then key = "overview" end
+    combatOverviewHolder:SetShown(key == "overview")
+    combatDisplayHolder:SetShown(key == "display")
+    combatTrackingHolder:SetShown(key == "tracking")
+  end
+  O.state.applyDevSubTab()
+  O.state.applyCombatSubTab()
 
   local top = panel:GetFrameLevel()
   close:SetFrameLevel(top + 50)
@@ -194,6 +303,7 @@ function O.Create()
   sizer:SetFrameLevel(top + 50)
 
   panel:SetScript("OnShow", function()
+    BringPanelToFront(panel)
     O.EnsureDB()
     _G.FlexxUIDB.optionsGeneralSubTab = "settings"
     if lockBtn.Label then
@@ -202,6 +312,16 @@ function O.Create()
     O.RefreshControls()
     O.SelectTab("general")
   end)
+
+  local function HookBring(frame)
+    if not frame or not frame.HookScript then return end
+    pcall(function()
+      frame:HookScript("OnMouseDown", function() BringPanelToFront(panel) end)
+    end)
+  end
+  for _, fr in ipairs({ generalShell, generalBody, unitShell, unitBody, devShell, devBody, combatShell, combatBody }) do
+    HookBring(fr)
+  end
 
   panel:EnableMouseWheel(true)
   panel:SetScript("OnMouseWheel", function(self, delta)

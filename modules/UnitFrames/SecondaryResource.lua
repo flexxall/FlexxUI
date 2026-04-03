@@ -20,6 +20,27 @@ local function SecondaryPowerProbeList()
   }
 end
 
+local function SecondaryPowerTypeColor(pt)
+  -- Prefer explicit class-resource palette, then fall back to PowerBarColor if available.
+  if Enum and Enum.PowerType then
+    local E = Enum.PowerType
+    if pt == E.HolyPower then return 0.95, 0.82, 0.32 end
+    if pt == E.ComboPoints then return 0.92, 0.20, 0.18 end
+    if pt == E.Chi then return 0.38, 0.90, 0.82 end
+    if pt == E.SoulShards then return 0.60, 0.32, 0.95 end
+    if pt == E.ArcaneCharges then return 0.82, 0.44, 0.95 end
+    if pt == E.Essence then return 0.32, 0.78, 0.98 end
+  end
+  local pbc = PowerBarColor and PowerBarColor[pt]
+  if pbc then
+    local r = pbc.r or pbc[1] or 0.95
+    local g = pbc.g or pbc[2] or 0.85
+    local b = pbc.b or pbc[3] or 0.35
+    return r, g, b
+  end
+  return 0.95, 0.85, 0.35
+end
+
 --- Returns powerType, current, max or nil, 0, 0 if none.
 function UF.GetSecondaryPowerValues(unit)
   if not unit or not UnitExists(unit) then return nil, 0, 0 end
@@ -48,7 +69,7 @@ end
 function UF.CreateTopResourceBar(f)
   f.topBarFrame = CreateFrame("Frame", nil, f)
   f.topBarFrame:SetHeight(TOP_BAR_H)
-  f.topBarFrame:SetFrameLevel(f:GetFrameLevel() + 5)
+  f.topBarFrame:SetFrameLevel(f:GetFrameLevel() + 7)
   f.topBarFrame:EnableMouse(false)
   f.topBarFrame:Hide()
 
@@ -125,12 +146,7 @@ function UF.UpdateTopResourceBar(f)
   end
   LayoutPips(f, n)
 
-  local r, g, b = 0.95, 0.85, 0.35
-  if UnitIsPlayer(f.unit) then
-    local _, class = UnitClass(f.unit)
-    local c = class and RAID_CLASS_COLORS[class]
-    if c then r, g, b = c.r, c.g, c.b end
-  end
+  local r, g, b = SecondaryPowerTypeColor(pt)
 
   local dark = (db.classBarColorStyle or "default") == "dark"
   if dark then

@@ -48,19 +48,53 @@ function UF.ApplyUnitFramePowerBarLayout(f)
   if UF.AnchorTopResourceBarToHealth then UF.AnchorTopResourceBarToHealth(f) end
 end
 
---- After f:SetFrameLevel, re-apply stacking so children stay ordered (threat under health under prediction strips).
+--- Stacking (back→front): threat → deficit → incoming/absorb → health fill → power (above health for inset overlap) → top pips → text.
+--- Deficit is f.healthMissingBg; prediction between deficit and health fill; power must be above f.health so the resource strip paints on top.
 function UF.ApplyUnitFrameChildLevels(f)
   if not f then return end
   local z = f:GetFrameLevel() or 0
-  if f.power and f.power.SetFrameLevel then
-    local inset = _G.FlexxUIDB and _G.FlexxUIDB.powerBarLayout == "inset"
-    f.power:SetFrameLevel(z + (inset and 3 or 2))
-  end
-  if f.health and f.health.SetFrameLevel then f.health:SetFrameLevel(z + 2) end
-  if f.healthPrediction and f.healthPrediction.SetFrameLevel then f.healthPrediction:SetFrameLevel(z + 100) end
-  if f.healthTextLayer and f.healthTextLayer.SetFrameLevel then f.healthTextLayer:SetFrameLevel(z + 110) end
-  if f.topBarFrame and f.topBarFrame.SetFrameLevel then f.topBarFrame:SetFrameLevel(z + 5) end
   if f._threatGlowRoot and f._threatGlowRoot.SetFrameLevel then f._threatGlowRoot:SetFrameLevel(z + 1) end
+  if f.healthMissingBg and f.healthMissingBg.SetFrameLevel then f.healthMissingBg:SetFrameLevel(z + 2) end
+  if f.healthPrediction and f.healthPrediction.SetFrameLevel then f.healthPrediction:SetFrameLevel(z + 3) end
+  if f.health and f.health.SetFrameLevel then f.health:SetFrameLevel(z + 4) end
+  if f.power and f.power.SetFrameLevel then f.power:SetFrameLevel(z + 6) end
+  if f.topBarFrame and f.topBarFrame.SetFrameLevel then f.topBarFrame:SetFrameLevel(z + 7) end
+  if f.healthTextLayer and f.healthTextLayer.SetFrameLevel then f.healthTextLayer:SetFrameLevel(z + 10) end
+  if f._playerLowHealthChrome and f._playerLowHealthChrome.SetFrameLevel and f.health then
+    pcall(function()
+      f._playerLowHealthChrome:SetFrameLevel(f.health:GetFrameLevel() + 1)
+    end)
+  end
+end
+
+local function EnsureBlizzardRetryFrame()
+  if UF.state.blizzardRetryFrame then return UF.state.blizzardRetryFrame end
+  local rf = CreateFrame("Frame")
+  rf:SetScript("OnEvent", function(self, event)
+    if event ~= "PLAYER_REGEN_ENABLED" then return end
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    UF.ApplyHideBlizzard()
+  end)
+  UF.state.blizzardRetryFrame = rf
+  return rf
+end
+
+--- RegisterEvent from secure hooks / combat paths is tainted; defer to next frame (Retail ADDON_ACTION_FORBIDDEN on RegisterEvent).
+local function RegisterRegenRetryDeferred()
+  if not C_Timer or not C_Timer.After then
+    EnsureBlizzardRetryFrame():RegisterEvent("PLAYER_REGEN_ENABLED")
+    return
+  end
+  C_Timer.After(0, function()
+    local rf = EnsureBlizzardRetryFrame()
+    if rf and rf.RegisterEvent then
+      rf:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
+  end)
+end
+
+local function IsInCombatLockdown()
+  return InCombatLockdown and InCombatLockdown()
 end
 
 local function EnsureBlizzardHooks()
@@ -69,15 +103,31 @@ local function EnsureBlizzardHooks()
   UF.state.blizzardHooksInstalled = true
 
   PlayerFrame:HookScript("OnShow", function(self)
-    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then self:Hide() end
+    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then
+      if IsInCombatLockdown() then
+        RegisterRegenRetryDeferred()
+        return
+      end
+      self:Hide()
+    end
   end)
   TargetFrame:HookScript("OnShow", function(self)
-    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then self:Hide() end
+    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then
+      if IsInCombatLockdown() then
+        RegisterRegenRetryDeferred()
+        return
+      end
+      self:Hide()
+    end
   end)
 end
 
 local function RestoreBlizzardUnitFrames()
   if not PlayerFrame or not TargetFrame then return end
+  if IsInCombatLockdown() then
+    RegisterRegenRetryDeferred()
+    return
+  end
   PlayerFrame:SetAlpha(1)
   PlayerFrame:EnableMouse(true)
   PlayerFrame:Show()
@@ -88,6 +138,10 @@ end
 
 local function HideBlizzardUnitFrames()
   if not PlayerFrame or not TargetFrame then return end
+  if IsInCombatLockdown() then
+    RegisterRegenRetryDeferred()
+    return
+  end
   EnsureBlizzardHooks()
   PlayerFrame:SetAlpha(0); PlayerFrame:EnableMouse(false); PlayerFrame:Hide()
   TargetFrame:SetAlpha(0); TargetFrame:EnableMouse(false); TargetFrame:Hide()
@@ -212,7 +266,10 @@ local function RegisterEvents(frame, unit)
       end
       return
     end
-    if event == "PLAYER_UPDATE_RESTING" or event == "UPDATE_EXHAUSTION" then
+    if event == "PLAYER_UPDATE_RESTING"
+      or event == "UPDATE_EXHAUSTION"
+      or event == "PLAYER_REGEN_DISABLED"
+      or event == "PLAYER_REGEN_ENABLED" then
       if self.unit == "player" then UF.UpdatePlayerResting(self) end
       return
     end
@@ -237,6 +294,8 @@ local function RegisterEvents(frame, unit)
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
     frame:RegisterEvent("PLAYER_UPDATE_RESTING")
     frame:RegisterEvent("UPDATE_EXHAUSTION")
+    frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
     frame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
     frame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
   else
@@ -295,13 +354,26 @@ local function MakeUnitFrame(key, unit, defaultPoint)
   f.health._flexxUnit = unit
   f.health:EnableMouse(false)
 
+  -- Full-bar "missing health" color on its own layer *under* incoming heal/absorb; StatusBar backdrop cleared in ApplyHealthBarMissingColor.
+  f.healthMissingBg = CreateFrame("Frame", nil, f)
+  f.healthMissingBg:SetPoint("TOPLEFT", f.health, "TOPLEFT")
+  f.healthMissingBg:SetPoint("BOTTOMRIGHT", f.health, "BOTTOMRIGHT")
+  f.healthMissingBg:SetFrameLevel((f:GetFrameLevel() or 0) + 2)
+  f.healthMissingBg:EnableMouse(false)
+  local defTex = f.healthMissingBg:CreateTexture(nil, "BACKGROUND")
+  defTex:SetAllPoints()
+  defTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+  f.healthMissingBg._flexxDeficitTex = defTex
+  f.health._flexxMissingBg = f.healthMissingBg
+  UF.ApplyHealthBarMissingColor(f.health)
+
   UF.ApplyUnitFramePowerBarLayout(f)
 
-  -- Prediction sits above the health fill; name/health % need their own layer above prediction (FontStrings have no FrameLevel).
+  -- Incoming heal / absorb: between deficit layer and health fill (see ApplyUnitFrameChildLevels).
   f.healthPrediction = CreateFrame("Frame", nil, f)
   f.healthPrediction:SetPoint("TOPLEFT", f.health, "TOPLEFT")
   f.healthPrediction:SetPoint("BOTTOMLEFT", f.health, "BOTTOMLEFT")
-  f.healthPrediction:SetFrameLevel((f:GetFrameLevel() or 0) + 100)
+  f.healthPrediction:SetFrameLevel((f:GetFrameLevel() or 0) + 3)
   f.healthPrediction:EnableMouse(false)
   local function SyncHealthPredictionWidth()
     pcall(function()
@@ -353,7 +425,7 @@ local function MakeUnitFrame(key, unit, defaultPoint)
 
   f.healthTextLayer = CreateFrame("Frame", nil, f)
   f.healthTextLayer:SetAllPoints(f.health)
-  f.healthTextLayer:SetFrameLevel((f:GetFrameLevel() or 0) + 110)
+  f.healthTextLayer:SetFrameLevel((f:GetFrameLevel() or 0) + 10)
   f.healthTextLayer:EnableMouse(false)
 
   f.name = (ns.Fonts and ns.Fonts.CreateFontString(f.healthTextLayer, "OVERLAY", "GameFontNormal", "unit")) or f.healthTextLayer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -418,9 +490,19 @@ end
 
 function UF.Create()
   UF.EnsureDB()
-  if UF.state.frames.player or UF.state.frames.target then return end
-  MakeUnitFrame("player", "player", { "TOPLEFT", UIParent, "BOTTOMLEFT", 0, -20 })
-  MakeUnitFrame("target", "target", { "TOPRIGHT", UIParent, "BOTTOMRIGHT", 0, -20 })
-  UF.ApplyHideBlizzard()
+  if not UF.state.frames.player then
+    MakeUnitFrame("player", "player", { "TOPLEFT", UIParent, "BOTTOMLEFT", 0, -20 })
+  end
+  if not UF.state.frames.target then
+    MakeUnitFrame("target", "target", { "TOPRIGHT", UIParent, "BOTTOMRIGHT", 0, -20 })
+  end
+  --- Next frame: touching default unit frames during BuildUI can trigger secure-action errors on reload.
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      UF.ApplyHideBlizzard()
+    end)
+  else
+    UF.ApplyHideBlizzard()
+  end
 end
 

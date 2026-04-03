@@ -13,9 +13,26 @@ local function EnsureDB()
   if ns.UnitFrames and ns.UnitFrames.MigrateLegacyAuraLayout then
     ns.UnitFrames.MigrateLegacyAuraLayout()
   end
+  if ns.Debug and ns.Debug.Init then
+    ns.Debug.Init()
+  end
   ns.DB = ns.DB or {}
   if ns.DB.ApplyDefaults then
     ns.DB.ApplyDefaults(_G.FlexxUIDB, ns.DB.Defaults)
+  end
+  -- Legacy: combat center used FlexxUILayout.movers; position now lives in FlexxUIDB.combatCenter.anchorX/Y.
+  do
+    local m = _G.FlexxUILayout and _G.FlexxUILayout.movers and _G.FlexxUILayout.movers.combatCenter
+    if m and type(m.x) == "number" and type(m.y) == "number" then
+      local cc = _G.FlexxUIDB and _G.FlexxUIDB.combatCenter
+      if cc then
+        cc.anchorX = m.x
+        cc.anchorY = m.y
+      end
+      if ns.Movers and ns.Movers.ClearSavedPosition then
+        ns.Movers.ClearSavedPosition("combatCenter")
+      end
+    end
   end
   if ns.Fonts and ns.Fonts.EnsureDB then
     ns.Fonts.EnsureDB()
@@ -40,6 +57,10 @@ local function BuildUI()
 
   if ns.CastBar and ns.CastBar.Create then
     ns.CastBar.Create()
+  end
+
+  if ns.CombatCenter and ns.CombatCenter.Create then
+    ns.CombatCenter.Create()
   end
 
   if ns.Fonts and ns.Fonts.Apply then

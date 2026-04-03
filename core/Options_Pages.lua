@@ -38,9 +38,9 @@ local function setNameColorOverrideValue(unitKey, value)
   O.RefreshControls()
 end
 
-local UNIT_PAGE_CONTENT_HEIGHT = 1480
-local TARGET_SUBTAB_HEIGHT = { frame = UNIT_PAGE_CONTENT_HEIGHT, cast = 360 }
-local PLAYER_SUBTAB_HEIGHT = { health = 810, power = 1220, classbar = 300, auras = 400, cast = 520, general = 450 }
+local UNIT_PAGE_CONTENT_HEIGHT = 2200
+local TARGET_SUBTAB_HEIGHT = { frame = UNIT_PAGE_CONTENT_HEIGHT, cast = 420 }
+local PLAYER_SUBTAB_HEIGHT = { health = 980, power = 1920, classbar = 360, auras = 360, cast = 760, general = 520 }
 
 local function addResourceBarLayoutSection(parent, below, gap)
   gap = gap or 16
@@ -266,7 +266,7 @@ function O.BuildGeneralPage(content)
   local settingsCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
   settingsCard:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
   settingsCard:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-  settingsCard:SetHeight(340)
+  settingsCard:SetHeight(900)
   O.StyleSurface(settingsCard, 0.80)
   settingsCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
   settingsCard:SetBackdropBorderColor(0, 0, 0, 0)
@@ -274,12 +274,12 @@ function O.BuildGeneralPage(content)
   local panelSettings = CreateFrame("Frame", nil, settingsCard)
   panelSettings:SetPoint("TOPLEFT", 14, -14)
   panelSettings:SetPoint("TOPRIGHT", -14, -14)
-  panelSettings:SetHeight(306)
+  panelSettings:SetHeight(860)
 
   local fontsCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
   fontsCard:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
   fontsCard:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-  fontsCard:SetHeight(600)
+  fontsCard:SetHeight(1320)
   O.StyleSurface(fontsCard, 0.80)
   fontsCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
   fontsCard:SetBackdropBorderColor(0, 0, 0, 0)
@@ -298,191 +298,122 @@ function O.BuildGeneralPage(content)
     p:SetPoint("TOPLEFT", fontsNav, "BOTTOMLEFT", 0, -10)
     p:SetPoint("TOPRIGHT", fontsNav, "BOTTOMRIGHT", 0, -10)
   end
-  panelFontsUI:SetHeight(348)
-  panelFontsUnit:SetHeight(478)
+  panelFontsUI:SetHeight(1240)
+  panelFontsUnit:SetHeight(1240)
 
   local ver = ns.version or "dev"
-  local welcomeTitle = ArtFont(panelSettings, "GameFontNormalLarge")
-  welcomeTitle:SetPoint("TOPLEFT", 0, 0)
-  welcomeTitle:SetText("Welcome to FlexxUI")
+  O.BuildSchemaPage(panelSettings, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Welcome",
+        hint = "Core addon settings and maintenance actions.",
+        collapsedKey = "general_settings_welcome",
+        controls = {
+          { type = "note", text = "|cffaaaaaaVersion " .. ver .. "|r" },
+        },
+      },
+      {
+        title = "Blizzard frames",
+        collapsedKey = "general_settings_blizzard",
+        controls = {
+          {
+            type = "toggle",
+            label = "Hide Blizzard player/target frames (experimental)",
+            get = function() return _G.FlexxUIDB.hideBlizzard end,
+            set = function(v)
+              _G.FlexxUIDB.hideBlizzard = v
+              if ns.UnitFrames and ns.UnitFrames.ApplyHideBlizzard then ns.UnitFrames.ApplyHideBlizzard() end
+            end,
+          },
+        },
+      },
+      {
+        title = "Minimap",
+        collapsedKey = "general_settings_minimap",
+        controls = {
+          {
+            type = "toggle",
+            label = "Show minimap button",
+            get = function() return _G.FlexxUIDB.minimapButtonShow ~= false end,
+            set = function(v)
+              _G.FlexxUIDB.minimapButtonShow = v and true or false
+              if ns.Minimap and ns.Minimap.ApplyVisibility then ns.Minimap.ApplyVisibility() end
+            end,
+          },
+        },
+      },
+      {
+        title = "Maintenance",
+        collapsedKey = "general_settings_maintenance",
+        controls = {
+          { type = "button", label = "Reload UI", onClick = function() ReloadUI() end, width = 140 },
+          { type = "button", label = "Reset Settings", onClick = function()
+              if ns.DB and ns.DB.Reset then ns.DB.Reset() else _G.FlexxUIDB = {} end
+              ReloadUI()
+            end, width = 160 },
+          { type = "button", label = "Reset positions", onClick = function()
+              if ns.Movers and ns.Movers.ResetSavedPositions then ns.Movers.ResetSavedPositions() end
+              ReloadUI()
+            end, width = 160 },
+        },
+      },
+    },
+  })
 
-  local hintWelcomeVersion = ArtFont(panelSettings, "GameFontHighlightSmall")
-  hintWelcomeVersion:SetPoint("TOPLEFT", welcomeTitle, "BOTTOMLEFT", 0, -6)
-  hintWelcomeVersion:SetText("|cffaaaaaaVersion " .. ver .. "|r")
-
-  local hdrBlizzard = ArtFont(panelSettings, "GameFontHighlight")
-  hdrBlizzard:SetPoint("TOPLEFT", hintWelcomeVersion, "BOTTOMLEFT", 0, -16)
-  hdrBlizzard:SetText("Blizzard frames")
-
-  local cbHide = O.MakeToggle(panelSettings, "Hide Blizzard player/target frames (experimental)", function()
-    return _G.FlexxUIDB.hideBlizzard
-  end, function(v)
-    _G.FlexxUIDB.hideBlizzard = v
-    if ns.UnitFrames and ns.UnitFrames.ApplyHideBlizzard then ns.UnitFrames.ApplyHideBlizzard() end
-  end)
-  cbHide:SetPoint("TOPLEFT", hdrBlizzard, "BOTTOMLEFT", 0, -6)
-  table.insert(O.state.controls, cbHide)
-
-  local hdrMinimap = ArtFont(panelSettings, "GameFontHighlight")
-  hdrMinimap:SetPoint("TOPLEFT", cbHide, "BOTTOMLEFT", 0, -18)
-  hdrMinimap:SetText("Minimap")
-
-  local cbShowMinimap = O.MakeToggle(panelSettings, "Show minimap button", function()
-    return _G.FlexxUIDB.minimapButtonShow ~= false
-  end, function(v)
-    _G.FlexxUIDB.minimapButtonShow = v and true or false
-    if ns.Minimap and ns.Minimap.ApplyVisibility then
-      ns.Minimap.ApplyVisibility()
-    end
-  end)
-  cbShowMinimap:SetPoint("TOPLEFT", hdrMinimap, "BOTTOMLEFT", 0, -6)
-  table.insert(O.state.controls, cbShowMinimap)
-
-  local hdrMaint = ArtFont(panelSettings, "GameFontHighlight")
-  hdrMaint:SetPoint("TOPLEFT", cbShowMinimap, "BOTTOMLEFT", 0, -18)
-  hdrMaint:SetText("Maintenance")
-
-  local reloadBtn = O.MakeFlatButton(panelSettings, "Reload UI", nil, nil, function() ReloadUI() end)
-  reloadBtn:SetPoint("TOPLEFT", hdrMaint, "BOTTOMLEFT", 0, -6)
-  local resetBtn = O.MakeFlatButton(panelSettings, "Reset Settings", nil, nil, function()
-    if ns.DB and ns.DB.Reset then ns.DB.Reset() else _G.FlexxUIDB = {} end
-    ReloadUI()
-  end)
-  resetBtn:SetPoint("LEFT", reloadBtn, "RIGHT", 12, 0)
-
-  local hdrLayout = ArtFont(panelSettings, "GameFontHighlight")
-  hdrLayout:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -14)
-  hdrLayout:SetText("Layout & positions")
-
-  local resetPosBtn = O.MakeFlatButton(panelSettings, "Reset positions", nil, nil, function()
-    if ns.Movers and ns.Movers.ResetSavedPositions then ns.Movers.ResetSavedPositions() end
-    ReloadUI()
-  end)
-  resetPosBtn:SetPoint("TOPLEFT", hdrLayout, "BOTTOMLEFT", 0, -6)
-
-  local fontUiHdr = ArtFont(panelFontsUI, "GameFontHighlight")
-  fontUiHdr:SetPoint("TOPLEFT", 0, 0)
-  fontUiHdr:SetText("Settings panel and options chrome")
-
-  local rbUiDef = O.MakeRadio(panelFontsUI, "Default (Blizzard templates)", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "default", function(mode)
+  local function applyUIFontPreset(mode)
     _G.FlexxUIDB.flexxUIFontPresetUI = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
     O.RefreshControls()
-  end)
-  rbUiDef:SetPoint("TOPLEFT", fontUiHdr, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUiDef)
+  end
+  O.BuildSchemaPage(panelFontsUI, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Settings panel and options chrome",
+        collapsedKey = "general_fonts_ui",
+        controls = {
+          { type = "radio", label = "Default (Blizzard templates)", get = function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, value = "default", set = applyUIFontPreset },
+          { type = "radio", label = "Friz Quadrata", get = function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, value = "friz", set = applyUIFontPreset },
+          { type = "radio", label = "Arial Narrow", get = function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, value = "arial_narrow", set = applyUIFontPreset },
+          { type = "radio", label = "Roboto Condensed Bold", get = function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, value = "roboto_condensed", set = applyUIFontPreset, gapAfter = 12 },
+          { type = "slider_scale_pct", label = "Size (relative to template)", min = 70, max = 150, step = 5, get = function() return _G.FlexxUIDB.flexxUIFontScaleUI or 1 end, set = function(s) _G.FlexxUIDB.flexxUIFontScaleUI = s end },
+        },
+      },
+    },
+  })
 
-  local rbUiFriz = O.MakeRadio(panelFontsUI, "Friz Quadrata", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "friz", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUI = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbUiFriz:SetPoint("TOPLEFT", rbUiDef, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUiFriz)
-
-  local rbUiArial = O.MakeRadio(panelFontsUI, "Arial Narrow", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "arial_narrow", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUI = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbUiArial:SetPoint("TOPLEFT", rbUiFriz, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUiArial)
-
-  local rbUiRoboto = O.MakeRadio(panelFontsUI, "Roboto Condensed Bold", function() return _G.FlexxUIDB.flexxUIFontPresetUI or "default" end, "roboto_condensed", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUI = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbUiRoboto:SetPoint("TOPLEFT", rbUiArial, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUiRoboto)
-
-  local scaleUi = O.MakeScalePercentSlider(panelFontsUI, "Size (relative to template)", 70, 150, 5, function()
-    return _G.FlexxUIDB.flexxUIFontScaleUI or 1
-  end, function(s)
-    _G.FlexxUIDB.flexxUIFontScaleUI = s
-  end)
-  scaleUi:SetPoint("TOPLEFT", rbUiRoboto, "BOTTOMLEFT", 0, -16)
-  table.insert(O.state.controls, scaleUi)
-
-  local fontUnitHdr = ArtFont(panelFontsUnit, "GameFontHighlight")
-  fontUnitHdr:SetPoint("TOPLEFT", 0, 0)
-  fontUnitHdr:SetText("Player / target / pet frames and FlexxUI cast bars")
-
-  local rbUDef = O.MakeRadio(panelFontsUnit, "Default (Blizzard templates)", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "default", function(mode)
+  local function applyUnitFontPreset(mode)
     _G.FlexxUIDB.flexxUIFontPresetUnit = mode
     if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
     O.RefreshControls()
-  end)
-  rbUDef:SetPoint("TOPLEFT", fontUnitHdr, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUDef)
-
-  local rbUFriz = O.MakeRadio(panelFontsUnit, "Friz Quadrata", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "friz", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUnit = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbUFriz:SetPoint("TOPLEFT", rbUDef, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUFriz)
-
-  local rbUArial = O.MakeRadio(panelFontsUnit, "Arial Narrow", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "arial_narrow", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUnit = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbUArial:SetPoint("TOPLEFT", rbUFriz, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbUArial)
-
-  local rbURoboto = O.MakeRadio(panelFontsUnit, "Roboto Condensed Bold", function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, "roboto_condensed", function(mode)
-    _G.FlexxUIDB.flexxUIFontPresetUnit = mode
-    if ns.Fonts and ns.Fonts.Apply then ns.Fonts.Apply() end
-    O.RefreshControls()
-  end)
-  rbURoboto:SetPoint("TOPLEFT", rbUArial, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbURoboto)
-
-  local scaleUnit = O.MakeScalePercentSlider(panelFontsUnit, "Size (relative to template or preset)", 70, 150, 5, function()
-    return _G.FlexxUIDB.flexxUIFontScaleUnit or 1
-  end, function(s)
-    _G.FlexxUIDB.flexxUIFontScaleUnit = s
-  end)
-  scaleUnit:SetPoint("TOPLEFT", rbURoboto, "BOTTOMLEFT", 0, -16)
-  table.insert(O.state.controls, scaleUnit)
-
-  local nameColorDefaultHdr = ArtFont(panelFontsUnit, "GameFontHighlight")
-  nameColorDefaultHdr:SetPoint("TOPLEFT", scaleUnit, "BOTTOMLEFT", 0, -20)
-  nameColorDefaultHdr:SetText("Unit name text color (default)")
-
-  local rbNmClass = O.MakeRadio(panelFontsUnit, "Class color", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "class", function(mode)
-    _G.FlexxUIDB.nameTextColorMode = mode
-    if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end
-    O.RefreshControls()
-  end)
-  rbNmClass:SetPoint("TOPLEFT", nameColorDefaultHdr, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbNmClass)
-
-  local rbNmWhite = O.MakeRadio(panelFontsUnit, "White", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "white", function(mode)
-    _G.FlexxUIDB.nameTextColorMode = mode
-    if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end
-    O.RefreshControls()
-  end)
-  rbNmWhite:SetPoint("TOPLEFT", rbNmClass, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbNmWhite)
-
-  local rbNmYellow = O.MakeRadio(panelFontsUnit, "Warm yellow", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "yellow", function(mode)
-    _G.FlexxUIDB.nameTextColorMode = mode
-    if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end
-    O.RefreshControls()
-  end)
-  rbNmYellow:SetPoint("TOPLEFT", rbNmWhite, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbNmYellow)
-
-  local rbNmDark = O.MakeRadio(panelFontsUnit, "Dark (near black)", function() return _G.FlexxUIDB.nameTextColorMode or "class" end, "dark", function(mode)
-    _G.FlexxUIDB.nameTextColorMode = mode
-    if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end
-    O.RefreshControls()
-  end)
-  rbNmDark:SetPoint("TOPLEFT", rbNmYellow, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbNmDark)
+  end
+  O.BuildSchemaPage(panelFontsUnit, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Player / target / pet frames and FlexxUI cast bars",
+        collapsedKey = "general_fonts_unit_face",
+        controls = {
+          { type = "radio", label = "Default (Blizzard templates)", get = function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, value = "default", set = applyUnitFontPreset },
+          { type = "radio", label = "Friz Quadrata", get = function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, value = "friz", set = applyUnitFontPreset },
+          { type = "radio", label = "Arial Narrow", get = function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, value = "arial_narrow", set = applyUnitFontPreset },
+          { type = "radio", label = "Roboto Condensed Bold", get = function() return _G.FlexxUIDB.flexxUIFontPresetUnit or "default" end, value = "roboto_condensed", set = applyUnitFontPreset, gapAfter = 12 },
+          { type = "slider_scale_pct", label = "Size (relative to template or preset)", min = 70, max = 150, step = 5, get = function() return _G.FlexxUIDB.flexxUIFontScaleUnit or 1 end, set = function(s) _G.FlexxUIDB.flexxUIFontScaleUnit = s end },
+        },
+      },
+      {
+        title = "Unit name text color (default)",
+        collapsedKey = "general_fonts_unit_name",
+        controls = {
+          { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "class", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "White", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "white", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "yellow", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark (near black)", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "dark", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
+        },
+      },
+    },
+  })
 
   O.state.applyGeneralSubTab = function()
     local sub = _G.FlexxUIDB.optionsGeneralSubTab or "settings"
@@ -509,138 +440,247 @@ function O.BuildGeneralPage(content)
   end
 
   O.state.applyGeneralSubTab()
-  content:SetHeight(700)
+  content:SetHeight(1400)
 end
 
-function O.BuildDevPage(content)
-  local DEV_PANEL_CAST = 200
-  local DEV_PANEL_AURAS = 900
-
-  local devCard = CreateFrame("Frame", nil, content, "BackdropTemplate")
-  O.StyleSurface(devCard, 0.80)
-  devCard:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
-  devCard:SetBackdropBorderColor(0, 0, 0, 0)
-
-  local panelCast = CreateFrame("Frame", nil, devCard)
-  local panelAuras = CreateFrame("Frame", nil, devCard)
-  for _, p in ipairs({ panelCast, panelAuras }) do
-    p:SetPoint("TOPLEFT", 14, -14)
-    p:SetPoint("TOPRIGHT", -14, -14)
-  end
-  panelCast:SetHeight(DEV_PANEL_CAST)
-  panelAuras:SetHeight(DEV_PANEL_AURAS)
-
-  local secCast = ArtFont(panelCast, "GameFontHighlight")
-  secCast:SetPoint("TOPLEFT", 0, 0)
-  secCast:SetText("Cast bars")
-
-  local cbCastIdle = O.MakeToggle(panelCast, "Show empty player cast bar when not casting", function()
-    return _G.FlexxUIDB.castBarShowIdle == true
-  end, function(v)
-    _G.FlexxUIDB.castBarShowIdle = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end, 520)
-  cbCastIdle:SetPoint("TOPLEFT", secCast, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastIdle)
-
-  local cbCastTargetIdle = O.MakeToggle(panelCast, "Show empty target cast bar when not casting", function()
-    return _G.FlexxUIDB.castBarTargetShowIdle == true
-  end, function(v)
-    _G.FlexxUIDB.castBarTargetShowIdle = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end, 520)
-  cbCastTargetIdle:SetPoint("TOPLEFT", cbCastIdle, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastTargetIdle)
-
-  local secAuras = ArtFont(panelAuras, "GameFontHighlight")
-  secAuras:SetPoint("TOPLEFT", 0, 0)
-  secAuras:SetText("Player frame auras (layout & preview)")
-
+function O.BuildDevPage(content, mode)
   local function refreshAuraLayout()
-    if ns.UnitFrames and ns.UnitFrames.RefreshAurasFromOptions then ns.UnitFrames.RefreshAurasFromOptions() end
+    if ns.UnitFrames and ns.UnitFrames.RefreshAurasFromOptions then
+      ns.UnitFrames.RefreshAurasFromOptions()
+    end
   end
 
-  local cbPrevBuff = O.MakeToggle(panelAuras, "Preview buff row (placeholder icons)", function()
-    return _G.FlexxUIDB.unitFrameAuraDevPreviewBuff == true
-  end, function(v)
-    _G.FlexxUIDB.unitFrameAuraDevPreviewBuff = v and true or false
-    refreshAuraLayout()
-  end, 520)
-  cbPrevBuff:SetPoint("TOPLEFT", secAuras, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbPrevBuff)
-
-  local cbPrevDebuff = O.MakeToggle(panelAuras, "Preview debuff row (placeholder icons)", function()
-    return _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff == true
-  end, function(v)
-    _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff = v and true or false
-    refreshAuraLayout()
-  end, 520)
-  cbPrevDebuff:SetPoint("TOPLEFT", cbPrevBuff, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbPrevDebuff)
-
-  local cbPrevBars = O.MakeToggle(panelAuras, "Preview debuff timer bars", function()
-    return _G.FlexxUIDB.unitFrameAuraDevPreviewBars == true
-  end, function(v)
-    _G.FlexxUIDB.unitFrameAuraDevPreviewBars = v and true or false
-    refreshAuraLayout()
-  end, 520)
-  cbPrevBars:SetPoint("TOPLEFT", cbPrevDebuff, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbPrevBars)
-
-  local slBuffX = O.MakeIntSlider(panelAuras, "Buff row: offset left / right (px)", -80, 80, 1, function()
-    return _G.FlexxUIDB.playerAuraBuffAnchorX or 0
-  end, function(v)
-    _G.FlexxUIDB.playerAuraBuffAnchorX = v
-    refreshAuraLayout()
-  end)
-  slBuffX:SetPoint("TOPLEFT", cbPrevBars, "BOTTOMLEFT", 0, -14)
-  table.insert(O.state.controls, slBuffX)
-
-  local slBuffY = O.MakeIntSlider(panelAuras, "Buff row: offset up / down (px)", -80, 80, 1, function()
-    return _G.FlexxUIDB.playerAuraBuffAnchorY or 36
-  end, function(v)
-    _G.FlexxUIDB.playerAuraBuffAnchorY = v
-    refreshAuraLayout()
-  end)
-  slBuffY:SetPoint("TOPLEFT", slBuffX, "BOTTOMLEFT", 0, -4)
-  table.insert(O.state.controls, slBuffY)
-
-  local slDebuffX = O.MakeIntSlider(panelAuras, "Debuff icons / timer bars: offset left / right (px)", -80, 80, 1, function()
-    return _G.FlexxUIDB.playerAuraDebuffAnchorX or 0
-  end, function(v)
-    _G.FlexxUIDB.playerAuraDebuffAnchorX = v
-    refreshAuraLayout()
-  end)
-  slDebuffX:SetPoint("TOPLEFT", slBuffY, "BOTTOMLEFT", 0, -4)
-  table.insert(O.state.controls, slDebuffX)
-
-  local slDebuffY = O.MakeIntSlider(panelAuras, "Debuff icons / timer bars: offset up / down (px)", -80, 80, 1, function()
-    return _G.FlexxUIDB.playerAuraDebuffAnchorY or 4
-  end, function(v)
-    _G.FlexxUIDB.playerAuraDebuffAnchorY = v
-    refreshAuraLayout()
-  end)
-  slDebuffY:SetPoint("TOPLEFT", slDebuffX, "BOTTOMLEFT", 0, -4)
-  table.insert(O.state.controls, slDebuffY)
-
-  O.state.applyDevSubTab = function()
-    O.EnsureDB()
-    local key = (_G.FlexxUIDB and _G.FlexxUIDB.optionsDevSubTab) or "cast"
-    if key ~= "cast" and key ~= "auras" then key = "cast" end
-    panelCast:SetShown(key == "cast")
-    panelAuras:SetShown(key == "auras")
+  --- Sliders must not use `v or default` for px: only nil should fall back (0 is valid). Sync legacy unitFrame* keys so player/target stay aligned.
+  local function auraNum(key, default)
+    local v = _G.FlexxUIDB and _G.FlexxUIDB[key]
+    if type(v) == "number" then return v end
+    return default
   end
-  O.state.applyDevSubTab()
-
-  -- Scroll content must have height; devCard must fill it or the frame stays 0 tall and ClipsChildren hides everything.
-  local contentH = math.max(DEV_PANEL_CAST, DEV_PANEL_AURAS) + 40
-  content:SetHeight(contentH)
-  devCard:ClearAllPoints()
-  devCard:SetAllPoints(content)
-
-  if O.state.pageHolders and O.state.pageHolders.dev and O.state.pageHolders.dev.RefreshScroll then
-    O.state.pageHolders.dev:RefreshScroll()
+  local function syncBuffX(v)
+    local db = _G.FlexxUIDB
+    db.playerAuraBuffAnchorX = v
+    db.targetAuraBuffAnchorX = v
+    db.unitFrameAuraBuffAnchorX = v
+    refreshAuraLayout()
   end
+  local function syncBuffY(v)
+    local db = _G.FlexxUIDB
+    db.playerAuraBuffAnchorY = v
+    db.targetAuraBuffAnchorY = v
+    db.unitFrameAuraBuffAnchorY = v
+    refreshAuraLayout()
+  end
+  local function syncDebuffX(v)
+    local db = _G.FlexxUIDB
+    db.playerAuraDebuffAnchorX = v
+    db.targetAuraDebuffAnchorX = v
+    db.unitFrameAuraDebuffAnchorX = v
+    refreshAuraLayout()
+  end
+  local function syncDebuffY(v)
+    local db = _G.FlexxUIDB
+    db.playerAuraDebuffAnchorY = v
+    db.targetAuraDebuffAnchorY = v
+    db.unitFrameAuraDebuffAnchorY = v
+    refreshAuraLayout()
+  end
+
+  local sections
+  if mode == "auras" then
+    sections = {
+      {
+        title = "Player frame auras",
+        hint = "Layout nudges and preview toggles for aura row and timer-bar testing.",
+        collapsedKey = "dev_auras",
+        controls = {
+          { type = "note", text = "Offsets apply to player and target frames (and saved legacy mirror keys) so rows move reliably. Use whole px; 4 is a valid value (no longer auto-bumped on every load)." },
+          { type = "toggle", label = "Preview buff row (placeholder icons)", get = function() return _G.FlexxUIDB.unitFrameAuraDevPreviewBuff == true end, set = function(v) _G.FlexxUIDB.unitFrameAuraDevPreviewBuff = v and true or false; refreshAuraLayout() end },
+          { type = "toggle", label = "Preview debuff row (placeholder icons)", get = function() return _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff == true end, set = function(v) _G.FlexxUIDB.unitFrameAuraDevPreviewDebuff = v and true or false; refreshAuraLayout() end },
+          { type = "toggle", label = "Preview debuff timer bars", get = function() return _G.FlexxUIDB.unitFrameAuraDevPreviewBars == true end, set = function(v) _G.FlexxUIDB.unitFrameAuraDevPreviewBars = v and true or false; refreshAuraLayout() end, gapAfter = 12 },
+          { type = "slider_int", label = "Buff row: offset left / right (px)", min = -80, max = 80, step = 1, get = function() return auraNum("playerAuraBuffAnchorX", 0) end, set = syncBuffX, gapAfter = 4 },
+          { type = "slider_int", label = "Buff row: offset up / down (px)", min = -80, max = 80, step = 1, get = function() return auraNum("playerAuraBuffAnchorY", 50) end, set = syncBuffY, gapAfter = 4 },
+          { type = "slider_int", label = "Debuff icons / timer bars: offset left / right (px)", min = -80, max = 80, step = 1, get = function() return auraNum("playerAuraDebuffAnchorX", 0) end, set = syncDebuffX, gapAfter = 4 },
+          { type = "slider_int", label = "Debuff icons / timer bars: offset up / down (px)", min = -80, max = 80, step = 1, get = function() return auraNum("playerAuraDebuffAnchorY", 18) end, set = syncDebuffY },
+        },
+      },
+    }
+  else
+    sections = {
+      {
+        title = "Cast bars",
+        hint = "Debug-only toggles for showing empty cast bars while idle.",
+        collapsedKey = "dev_cast",
+        controls = {
+          { type = "toggle", label = "Show empty player cast bar when not casting", get = function() return _G.FlexxUIDB.castBarShowIdle == true end, set = function(v) _G.FlexxUIDB.castBarShowIdle = v and true or false; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end end },
+          { type = "toggle", label = "Show empty target cast bar when not casting", get = function() return _G.FlexxUIDB.castBarTargetShowIdle == true end, set = function(v) _G.FlexxUIDB.castBarTargetShowIdle = v and true or false; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end end },
+        },
+      },
+    }
+  end
+  table.insert(sections, {
+    title = "Unit frame panel",
+    hint = "Developer-only visibility toggle for frame backdrop.",
+    collapsedKey = "dev_unitframe_panel",
+    controls = {
+      { type = "toggle", label = "Show unit frame panel background", width = 320, get = function() return _G.FlexxUIDB.unitFrameBackdropShow ~= false end, set = function(v) _G.FlexxUIDB.unitFrameBackdropShow = v; if ns.UnitFrames and ns.UnitFrames.SetUnitFrameBackdropShow then ns.UnitFrames.SetUnitFrameBackdropShow(v) end end },
+    },
+  })
+  table.insert(sections, {
+    title = "Action block debug",
+    hint = "Logs blocked/forbidden UI actions so combat taint can be diagnosed.",
+    collapsedKey = "dev_action_block_debug",
+    controls = {
+      { type = "toggle", label = "Enable action-block logging", width = 320, get = function() return _G.FlexxUIDB.debugActionLogEnabled == true end, set = function(v) _G.FlexxUIDB.debugActionLogEnabled = v and true or false; if ns.Debug and ns.Debug.SetEnabled then ns.Debug.SetEnabled(v) end end, gapAfter = 6 },
+      { type = "toggle", label = "Show floating debug monitor", width = 320, get = function() return _G.FlexxUIDB.debugActionMonitorShown == true end, set = function(v) _G.FlexxUIDB.debugActionMonitorShown = v and true or false; if ns.Debug and ns.Debug.SetMonitorShown then ns.Debug.SetMonitorShown(v) end end, gapAfter = 6 },
+      { type = "button", label = "Clear debug log", width = 220, onClick = function() if ns.Debug and ns.Debug.Clear then ns.Debug.Clear() end end, gapAfter = 8 },
+      {
+        type = "custom",
+        build = function(parent)
+          local row = CreateFrame("Frame", nil, parent)
+          row:SetSize(640, 240)
+          local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+          fs:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+          fs:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, 0)
+          fs:SetJustifyH("LEFT")
+          fs:SetJustifyV("TOP")
+          fs:SetNonSpaceWrap(true)
+          fs:SetText("Debug log will appear here.")
+          row._ticker = 0
+          row:SetScript("OnUpdate", function(self, elapsed)
+            self._ticker = (self._ticker or 0) + elapsed
+            if self._ticker < 0.25 then return end
+            self._ticker = 0
+            if ns.Debug and ns.Debug.GetLogText then
+              fs:SetText(ns.Debug.GetLogText(16))
+            end
+          end)
+          return row
+        end,
+      },
+    },
+  })
+  O.BuildSchemaPage(content, { sections = sections })
+end
+
+function O.BuildCombatPage(content, mode)
+  local function refreshCombat()
+    if ns.CombatCenter and ns.CombatCenter.RefreshFromOptions then
+      ns.CombatCenter.RefreshFromOptions()
+    end
+  end
+
+  local sections
+  if mode == "display" then
+    sections = {
+      {
+        title = "Display lanes",
+        hint = "Enable/disable lanes so rotation globals, cooldowns, and debuffs can be separated cleanly.",
+        collapsedKey = "combat_lanes",
+        controls = {
+          { type = "toggle", label = "Show resource lane (class pips / points)", get = function() return _G.FlexxUIDB.combatCenter.showResourceLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showResourceLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show unit-frame top resource pips", get = function() return _G.FlexxUIDB.showSecondaryResource ~= false end, set = function(v) _G.FlexxUIDB.showSecondaryResource = v and true or false; _G.FlexxUIDB.combatCenter = _G.FlexxUIDB.combatCenter or {}; _G.FlexxUIDB.combatCenter.topPipsUserSet = true; if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end end },
+          { type = "toggle", label = "Show rotation lane (globals / next actions)", get = function() return _G.FlexxUIDB.combatCenter.showRotationLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showRotationLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show cooldown lane", get = function() return _G.FlexxUIDB.combatCenter.showCooldownLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showCooldownLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show debuff lane (tracked debuffs)", get = function() return _G.FlexxUIDB.combatCenter.showDebuffLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showDebuffLane = v and true or false; refreshCombat() end },
+        },
+      },
+      {
+        title = "Sizing",
+        hint = "Bigger debuffs can live in Combat Center instead of the compact unit-frame aura rows.",
+        collapsedKey = "combat_sizing",
+        controls = {
+          { type = "slider_int", label = "Primary icon size", min = 24, max = 80, step = 1, get = function() return _G.FlexxUIDB.combatCenter.iconSize or 44 end, set = function(v) _G.FlexxUIDB.combatCenter.iconSize = v; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Debuff icon size", min = 24, max = 100, step = 1, get = function() return _G.FlexxUIDB.combatCenter.debuffSize or 54 end, set = function(v) _G.FlexxUIDB.combatCenter.debuffSize = v; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Icon spacing", min = 0, max = 20, step = 1, get = function() return _G.FlexxUIDB.combatCenter.spacing or 8 end, set = function(v) _G.FlexxUIDB.combatCenter.spacing = v; refreshCombat() end, gapAfter = 12 },
+          { type = "toggle", label = "Show cooldown swipe", get = function() return _G.FlexxUIDB.combatCenter.iconShowCooldownSwipe ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.iconShowCooldownSwipe = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Desaturate unusable icons", get = function() return _G.FlexxUIDB.combatCenter.iconDesaturateUnusable ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.iconDesaturateUnusable = v and true or false; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Usable icon opacity (%)", min = 20, max = 100, step = 5, get = function() return math.floor(((_G.FlexxUIDB.combatCenter.iconUsableAlpha or 1) * 100) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.iconUsableAlpha = v / 100; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Unusable icon opacity (%)", min = 10, max = 100, step = 5, get = function() return math.floor(((_G.FlexxUIDB.combatCenter.iconUnusableAlpha or 0.65) * 100) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.iconUnusableAlpha = v / 100; refreshCombat() end },
+        },
+      },
+    }
+  elseif mode == "tracking" then
+    sections = {
+      {
+        title = "Tracking",
+        hint = "Class-specific rule tables and debuff lists.",
+        collapsedKey = "combat_tracking",
+        controls = {
+          { type = "toggle", label = "Track only class-relevant debuffs", get = function() return _G.FlexxUIDB.combatCenter.trackOnlyRelevantDebuffs ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.trackOnlyRelevantDebuffs = v and true or false; refreshCombat() end },
+          { type = "note", text = "Next step: class profiles (resource rules, rotation globals, cooldown lists, and debuff watchlists) will be data-driven and loaded per class/spec." },
+        },
+      },
+    }
+  else
+    sections = {
+      {
+        title = "Overview",
+        hint = "Core behavior for the center cooldown manager frame.",
+        collapsedKey = "combat_overview",
+        controls = {
+          {
+            type = "toggle",
+            label = "Enable combat center manager",
+            get = function() return _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.enabled == true end,
+            set = function(v)
+              _G.FlexxUIDB.combatCenter = _G.FlexxUIDB.combatCenter or {}
+              local enabled = v and true or false
+              _G.FlexxUIDB.combatCenter.enabled = enabled
+              -- Default behavior: when Combat Center is first enabled, hide unit-frame top pips.
+              if enabled and _G.FlexxUIDB.combatCenter.topPipsUserSet ~= true then
+                _G.FlexxUIDB.showSecondaryResource = false
+                if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then
+                  ns.UnitFrames.SetShowSecondaryResource(false)
+                end
+              end
+              refreshCombat()
+            end,
+          },
+          {
+            type = "toggle",
+            label = "Show only in combat",
+            get = function() return _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.onlyInCombat ~= false end,
+            set = function(v) _G.FlexxUIDB.combatCenter.onlyInCombat = v and true or false; refreshCombat() end,
+          },
+          {
+            type = "toggle",
+            label = "Lock frame (disable dragging)",
+            get = function() return _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.lockFrame == true end,
+            set = function(v) _G.FlexxUIDB.combatCenter.lockFrame = v and true or false; refreshCombat() end,
+            gapAfter = 12,
+          },
+          {
+            type = "slider_int",
+            label = "Horizontal offset (from screen center)",
+            min = -800,
+            max = 800,
+            step = 1,
+            get = function() return math.floor((_G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.anchorX) or 0) end,
+            set = function(v) _G.FlexxUIDB.combatCenter.anchorX = v; refreshCombat() end,
+            gapAfter = 4,
+          },
+          {
+            type = "slider_int",
+            label = "Vertical offset (negative = lower)",
+            min = -800,
+            max = 800,
+            step = 1,
+            get = function() return math.floor((_G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.anchorY) or -180) end,
+            set = function(v) _G.FlexxUIDB.combatCenter.anchorY = v; refreshCombat() end,
+            gapAfter = 12,
+          },
+          {
+            type = "slider_scale_pct",
+            label = "Combat center scale",
+            min = 70, max = 150, step = 1,
+            get = function() return (_G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.scale) or 1 end,
+            set = function(v) _G.FlexxUIDB.combatCenter.scale = v; refreshCombat() end,
+          },
+        },
+      },
+    }
+  end
+  O.BuildSchemaPage(content, { sections = sections })
 end
 
 function O.BuildUnitPlayerPage(content)
@@ -681,211 +721,78 @@ function O.BuildUnitPlayerPage(content)
   panelCast:SetHeight(PLAYER_SUBTAB_HEIGHT.cast)
   panelGeneral:SetHeight(PLAYER_SUBTAB_HEIGHT.general)
 
-  -- ——— Health bar tab ———
-  local leftH = CreateFrame("Frame", nil, panelHealth)
-  leftH:SetPoint("TOPLEFT", 0, 0); leftH:SetSize(320, PLAYER_SUBTAB_HEIGHT.health)
-  local rightH = CreateFrame("Frame", nil, panelHealth)
-  rightH:SetPoint("TOPLEFT", 332, 0); rightH:SetSize(320, PLAYER_SUBTAB_HEIGHT.health)
+  O.BuildSchemaPage(panelHealth, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Health bar",
+        collapsedKey = "player_health_bar",
+        controls = {
+          { type = "note", text = "Color" },
+          { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.playerHealthColorMode end, value = "class", set = function(mode) _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Green", get = function() return _G.FlexxUIDB.playerHealthColorMode end, value = "blizzard", set = function(mode) _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.playerHealthColorMode end, value = "dark", set = function(mode) _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Texture" },
+          { type = "radio", label = "None", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "none", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Default", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "default", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Flat", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "flat", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Health value format" },
+          { type = "radio", label = "Show percent", get = function() return _G.FlexxUIDB.healthTextMode end, value = "percent", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Show value", get = function() return _G.FlexxUIDB.healthTextMode end, value = "value", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Hide health text", get = function() return _G.FlexxUIDB.healthTextMode end, value = "none", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Health value position" },
+          { type = "radio", label = "Right", get = function() return _G.FlexxUIDB.healthTextAlign or "right" end, value = "right", set = function(align) _G.FlexxUIDB.healthTextAlign = align; if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end; O.RefreshControls() end },
+          { type = "radio", label = "Center", get = function() return _G.FlexxUIDB.healthTextAlign or "right" end, value = "center", set = function(align) _G.FlexxUIDB.healthTextAlign = align; if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Health value color" },
+          { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "class", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "white", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "dark", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+        },
+      },
+    },
+  })
 
-  local lbl1 = ArtFont(leftH, "GameFontHighlight"); lbl1:SetPoint("TOPLEFT", 0, 0); lbl1:SetText("Health Bar: color")
-  local rbClass = O.MakeRadio(leftH, "Class color", function() return _G.FlexxUIDB.playerHealthColorMode end, "class", function(mode)
-    _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls()
-  end); rbClass:SetPoint("TOPLEFT", lbl1, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbClass)
-  local rbBlizzard = O.MakeRadio(leftH, "Blizzard green", function() return _G.FlexxUIDB.playerHealthColorMode end, "blizzard", function(mode)
-    _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls()
-  end); rbBlizzard:SetPoint("TOPLEFT", rbClass, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbBlizzard)
-  local rbDark = O.MakeRadio(leftH, "Dark zinc / charcoal", function() return _G.FlexxUIDB.playerHealthColorMode end, "dark", function(mode)
-    _G.FlexxUIDB.playerHealthColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetPlayerHealthColorMode then ns.UnitFrames.SetPlayerHealthColorMode(mode) end; O.RefreshControls()
-  end); rbDark:SetPoint("TOPLEFT", rbBlizzard, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbDark)
+  O.BuildSchemaPage(panelPower, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Layout and fill",
+        collapsedKey = "player_power_layout",
+        controls = {
+          { type = "radio", label = "Full width below health", get = function() return _G.FlexxUIDB.powerBarLayout or "full" end, value = "full", set = function(mode) _G.FlexxUIDB.powerBarLayout = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Inset (overlaps health)", get = function() return _G.FlexxUIDB.powerBarLayout or "full" end, value = "inset", set = function(mode) _G.FlexxUIDB.powerBarLayout = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "radio", label = "Default (bright)", get = function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, value = "default", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark (muted)", get = function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, value = "dark", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end },
+        },
+      },
+      {
+        title = "Resource text and color controls",
+        hint = "Legacy helper sections preserved while migrating to schema.",
+        collapsedKey = "player_power_legacy",
+        advanced = true,
+        controls = {
+          { type = "custom", build = function(parent) local row = CreateFrame("Frame", nil, parent); row:SetSize(640, 560); local anchor = CreateFrame("Frame", nil, row); anchor:SetPoint("TOPLEFT", 0, 0); anchor:SetSize(1, 1); addResourceBarLayoutSection(row, anchor, 0); return row end, gapAfter = 8 },
+          { type = "custom", build = function(parent) local row = CreateFrame("Frame", nil, parent); row:SetSize(640, 980); local anchor = CreateFrame("Frame", nil, row); anchor:SetPoint("TOPLEFT", 0, 0); anchor:SetSize(1, 1); addResourceBarColorSection(row, anchor, 0); return row end },
+        },
+      },
+    },
+  })
 
-  local cbUnitBackdrop = O.MakeToggle(leftH, "Show unit frame panel background", function()
-    return _G.FlexxUIDB.unitFrameBackdropShow ~= false
-  end, function(v)
-    _G.FlexxUIDB.unitFrameBackdropShow = v
-    if ns.UnitFrames and ns.UnitFrames.SetUnitFrameBackdropShow then ns.UnitFrames.SetUnitFrameBackdropShow(v) end
-  end, 300)
-  cbUnitBackdrop:SetPoint("TOPLEFT", rbDark, "BOTTOMLEFT", 0, -20)
-  table.insert(O.state.controls, cbUnitBackdrop)
-
-  local lbl3 = ArtFont(leftH, "GameFontHighlight"); lbl3:SetPoint("TOPLEFT", cbUnitBackdrop, "BOTTOMLEFT", 0, -20); lbl3:SetText("Health value: format")
-  local rbPct = O.MakeRadio(leftH, "Show percent", function() return _G.FlexxUIDB.healthTextMode end, "percent", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbPct:SetPoint("TOPLEFT", lbl3, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbPct)
-  local rbVal = O.MakeRadio(leftH, "Show value", function() return _G.FlexxUIDB.healthTextMode end, "value", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbVal:SetPoint("TOPLEFT", rbPct, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbVal)
-  local rbHide = O.MakeRadio(leftH, "Hide health text", function() return _G.FlexxUIDB.healthTextMode end, "none", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbHide:SetPoint("TOPLEFT", rbVal, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHide)
-
-  local lblPos = ArtFont(leftH, "GameFontHighlight"); lblPos:SetPoint("TOPLEFT", rbHide, "BOTTOMLEFT", 0, -20); lblPos:SetText("Health value: position")
-  local rbAlignRight = O.MakeRadio(leftH, "Right", function() return _G.FlexxUIDB.healthTextAlign or "right" end, "right", function(align)
-    _G.FlexxUIDB.healthTextAlign = align
-    if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end
-    O.RefreshControls()
-  end); rbAlignRight:SetPoint("TOPLEFT", lblPos, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbAlignRight)
-  local rbAlignCenter = O.MakeRadio(leftH, "Center", function() return _G.FlexxUIDB.healthTextAlign or "right" end, "center", function(align)
-    _G.FlexxUIDB.healthTextAlign = align
-    if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end
-    O.RefreshControls()
-  end); rbAlignCenter:SetPoint("TOPLEFT", rbAlignRight, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbAlignCenter)
-
-  local lbl2 = ArtFont(rightH, "GameFontHighlight"); lbl2:SetPoint("TOPLEFT", 0, 0); lbl2:SetText("Health Bar: texture")
-  local rbTexNone = O.MakeRadio(rightH, "None (solid color)", function() return _G.FlexxUIDB.healthBarTexture end, "none", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexNone:SetPoint("TOPLEFT", lbl2, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexNone)
-  local rbTexDefault = O.MakeRadio(rightH, "Default", function() return _G.FlexxUIDB.healthBarTexture end, "default", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexDefault:SetPoint("TOPLEFT", rbTexNone, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexDefault)
-  local rbTexFlat = O.MakeRadio(rightH, "Flat", function() return _G.FlexxUIDB.healthBarTexture end, "flat", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexFlat:SetPoint("TOPLEFT", rbTexDefault, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexFlat)
-  local rbTexSmooth = O.MakeRadio(rightH, "Smooth", function() return _G.FlexxUIDB.healthBarTexture end, "smooth", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexSmooth:SetPoint("TOPLEFT", rbTexFlat, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexSmooth)
-
-  local lbl4 = ArtFont(rightH, "GameFontHighlight"); lbl4:SetPoint("TOPLEFT", rbTexSmooth, "BOTTOMLEFT", 0, -20); lbl4:SetText("Health value: color")
-  local rbHCName = O.MakeRadio(rightH, "Class color", function() return _G.FlexxUIDB.healthTextColorMode end, "name", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCName:SetPoint("TOPLEFT", lbl4, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCName)
-  local rbHCBar = O.MakeRadio(rightH, "Match health bar", function() return _G.FlexxUIDB.healthTextColorMode end, "classdark", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCBar:SetPoint("TOPLEFT", rbHCName, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCBar)
-  local rbHCSolid = O.MakeRadio(rightH, "Solid light gray", function() return _G.FlexxUIDB.healthTextColorMode end, "solid", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCSolid:SetPoint("TOPLEFT", rbHCBar, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCSolid)
-
-  local leftP = CreateFrame("Frame", nil, panelPower)
-  leftP:SetPoint("TOPLEFT", 0, 0); leftP:SetSize(320, PLAYER_SUBTAB_HEIGHT.power)
-  local rightP = CreateFrame("Frame", nil, panelPower)
-  rightP:SetPoint("TOPLEFT", 332, 0); rightP:SetSize(320, PLAYER_SUBTAB_HEIGHT.power)
-
-  local lblLayout = ArtFont(leftP, "GameFontHighlight")
-  lblLayout:SetPoint("TOPLEFT", 0, 0)
-  lblLayout:SetText("Layout")
-
-  local rbPowerLayoutFull = O.MakeRadio(leftP, "Full width below health", function() return _G.FlexxUIDB.powerBarLayout or "full" end, "full", function(mode)
-    _G.FlexxUIDB.powerBarLayout = mode
-    if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end
-    O.RefreshControls()
-  end)
-  rbPowerLayoutFull:SetPoint("TOPLEFT", lblLayout, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPowerLayoutFull)
-
-  local rbPowerLayoutInset = O.MakeRadio(leftP, "Inset (overlaps health)", function() return _G.FlexxUIDB.powerBarLayout or "full" end, "inset", function(mode)
-    _G.FlexxUIDB.powerBarLayout = mode
-    if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end
-    O.RefreshControls()
-  end)
-  rbPowerLayoutInset:SetPoint("TOPLEFT", rbPowerLayoutFull, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPowerLayoutInset)
-
-  local lblBarFill = ArtFont(leftP, "GameFontHighlight")
-  lblBarFill:SetPoint("TOPLEFT", rbPowerLayoutInset, "BOTTOMLEFT", 0, -14)
-  lblBarFill:SetText("Bar fill")
-
-  local rbPowerStyleDef = O.MakeRadio(leftP, "Default (bright)", function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, "default", function(mode)
-    _G.FlexxUIDB.powerBarColorStyle = mode
-    if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end
-    O.RefreshControls()
-  end)
-  rbPowerStyleDef:SetPoint("TOPLEFT", lblBarFill, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPowerStyleDef)
-
-  local rbPowerStyleDark = O.MakeRadio(leftP, "Dark (muted)", function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, "dark", function(mode)
-    _G.FlexxUIDB.powerBarColorStyle = mode
-    if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end
-    O.RefreshControls()
-  end)
-  rbPowerStyleDark:SetPoint("TOPLEFT", rbPowerStyleDef, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPowerStyleDark)
-
-  addResourceBarLayoutSection(leftP, rbPowerStyleDark, 16)
-
-  local lblResTextColor = ArtFont(rightP, "GameFontHighlight")
-  lblResTextColor:SetPoint("TOPLEFT", 0, 0)
-  lblResTextColor:SetText("Text color")
-
-  addResourceBarColorSection(rightP, lblResTextColor, 8)
-
-  -- Class bar tab (secondary resource pips)
-  local leftCB = CreateFrame("Frame", nil, panelClassBar)
-  leftCB:SetPoint("TOPLEFT", 0, 0)
-  leftCB:SetPoint("TOPRIGHT", 0, 0)
-  leftCB:SetHeight(PLAYER_SUBTAB_HEIGHT.classbar)
-
-  local classBarHdr = ArtFont(leftCB, "GameFontHighlight")
-  classBarHdr:SetPoint("TOPLEFT", 0, 0)
-  classBarHdr:SetText("Class bar (combo, holy power, chi, shards, …)")
-
-  local cbClassPips = O.MakeToggle(leftCB, "Show class resource pips", function()
-    return _G.FlexxUIDB.showSecondaryResource ~= false
-  end, function(v)
-    _G.FlexxUIDB.showSecondaryResource = v
-    if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end
-  end)
-  cbClassPips:SetPoint("TOPLEFT", classBarHdr, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbClassPips)
-
-  local lblClassPipStyle = ArtFont(leftCB, "GameFontHighlight")
-  lblClassPipStyle:SetPoint("TOPLEFT", cbClassPips, "BOTTOMLEFT", 0, -20)
-  lblClassPipStyle:SetText("Pip colors")
-
-  local rbClassBarDef = O.MakeRadio(leftCB, "Default (bright)", function() return _G.FlexxUIDB.classBarColorStyle or "default" end, "default", function(mode)
-    _G.FlexxUIDB.classBarColorStyle = mode
-    if ns.UnitFrames and ns.UnitFrames.SetClassBarColorStyle then ns.UnitFrames.SetClassBarColorStyle(mode) end
-    O.RefreshControls()
-  end)
-  rbClassBarDef:SetPoint("TOPLEFT", lblClassPipStyle, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbClassBarDef)
-
-  local rbClassBarDark = O.MakeRadio(leftCB, "Dark (muted)", function() return _G.FlexxUIDB.classBarColorStyle or "default" end, "dark", function(mode)
-    _G.FlexxUIDB.classBarColorStyle = mode
-    if ns.UnitFrames and ns.UnitFrames.SetClassBarColorStyle then ns.UnitFrames.SetClassBarColorStyle(mode) end
-    O.RefreshControls()
-  end)
-  rbClassBarDark:SetPoint("TOPLEFT", rbClassBarDef, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbClassBarDark)
-
-  -- ——— Auras tab (player frame only; target gets its own tab later) ———
-  local leftAura = CreateFrame("Frame", nil, panelAuras)
-  leftAura:SetPoint("TOPLEFT", 0, 0)
-  leftAura:SetPoint("TOPRIGHT", 0, 0)
-  leftAura:SetHeight(PLAYER_SUBTAB_HEIGHT.auras)
-
-  local auraIntro = ArtFont(leftAura, "GameFontHighlightSmall")
-  auraIntro:SetPoint("TOPLEFT", 0, 0)
-  auraIntro:SetText("Player unit frame")
-
-  local buffCard = CreateFrame("Frame", nil, leftAura, "BackdropTemplate")
-  O.StyleSurface(buffCard, 0.78)
-  buffCard:SetBackdropBorderColor(0, 0, 0, 0)
-  buffCard:SetPoint("TOPLEFT", auraIntro, "BOTTOMLEFT", 0, -12)
-  buffCard:SetPoint("TOPRIGHT", leftAura, "TOPRIGHT", 0, 0)
-  buffCard:SetHeight(92)
-
-  local hdrBuff = ArtFont(buffCard, "GameFontHighlight")
-  hdrBuff:SetPoint("TOPLEFT", 12, -12)
-  hdrBuff:SetText("Buffs")
-
-  local cbAuraBuffs = O.MakeToggle(buffCard, "Show helpful aura icons", function()
-    return _G.FlexxUIDB.playerAuraBuffs ~= false
-  end, function(v)
-    if ns.UnitFrames and ns.UnitFrames.SetUnitFrameAuraBuffs then ns.UnitFrames.SetUnitFrameAuraBuffs(v) end
-  end, 400)
-  cbAuraBuffs:SetPoint("TOPLEFT", hdrBuff, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbAuraBuffs)
-
-  local debuffCard = CreateFrame("Frame", nil, leftAura, "BackdropTemplate")
-  O.StyleSurface(debuffCard, 0.78)
-  debuffCard:SetBackdropBorderColor(0, 0, 0, 0)
-  debuffCard:SetPoint("TOPLEFT", buffCard, "BOTTOMLEFT", 0, -12)
-  debuffCard:SetPoint("TOPRIGHT", buffCard, "TOPRIGHT", 0, 0)
-  debuffCard:SetHeight(100)
-
-  local hdrDebuff = ArtFont(debuffCard, "GameFontHighlight")
-  hdrDebuff:SetPoint("TOPLEFT", 12, -12)
-  hdrDebuff:SetText("Debuffs")
+  O.BuildSchemaPage(panelClassBar, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Class bar (combo, holy power, chi, shards, ...)",
+        collapsedKey = "player_classbar",
+        controls = {
+          { type = "toggle", label = "Show top resource pips (above health bar)", get = function() return _G.FlexxUIDB.showSecondaryResource ~= false end, set = function(v) _G.FlexxUIDB.showSecondaryResource = v and true or false; _G.FlexxUIDB.combatCenter = _G.FlexxUIDB.combatCenter or {}; _G.FlexxUIDB.combatCenter.topPipsUserSet = true; if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end end, gapAfter = 12 },
+          { type = "radio", label = "Default (bright)", get = function() return _G.FlexxUIDB.classBarColorStyle or "default" end, value = "default", set = function(mode) _G.FlexxUIDB.classBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetClassBarColorStyle then ns.UnitFrames.SetClassBarColorStyle(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark (muted)", get = function() return _G.FlexxUIDB.classBarColorStyle or "default" end, value = "dark", set = function(mode) _G.FlexxUIDB.classBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetClassBarColorStyle then ns.UnitFrames.SetClassBarColorStyle(mode) end; O.RefreshControls() end },
+        },
+      },
+    },
+  })
 
   local function getDebuffDisplay()
     O.EnsureDB()
@@ -902,147 +809,76 @@ function O.BuildUnitPlayerPage(content)
     end
     O.RefreshControls()
   end
+  O.BuildSchemaPage(panelAuras, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Player unit frame buffs",
+        collapsedKey = "player_auras_buffs",
+        controls = {
+          { type = "toggle", label = "Show helpful aura icons", width = 400, get = function() return _G.FlexxUIDB.playerAuraBuffs ~= false end, set = function(v) if ns.UnitFrames and ns.UnitFrames.SetUnitFrameAuraBuffs then ns.UnitFrames.SetUnitFrameAuraBuffs(v) end end },
+        },
+      },
+      {
+        title = "Player unit frame debuffs",
+        collapsedKey = "player_auras_debuffs",
+        controls = {
+          { type = "enum", label = "Display", items = { { value = "none", text = "None" }, { value = "icons", text = "Icons" }, { value = "bars", text = "Timer bars" } }, get = getDebuffDisplay, set = setDebuffDisplay, width = 220 },
+        },
+      },
+    },
+  })
 
-  local ddDebuffDisplay = O.MakeEnumSelect(debuffCard, "Display", {
-    { value = "none", text = "None" },
-    { value = "icons", text = "Icons" },
-    { value = "bars", text = "Timer bars" },
-  }, getDebuffDisplay, setDebuffDisplay, 220)
-  ddDebuffDisplay:SetPoint("TOPLEFT", hdrDebuff, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, ddDebuffDisplay)
+  O.BuildSchemaPage(panelCast, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Spell name and cast time color",
+        collapsedKey = "player_cast_text",
+        controls = {
+          { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "light", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+          { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "dark", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+          { type = "radio", label = "Warm yellow (same as name preset)", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "warm_yellow", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+          { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "class_color", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+        },
+      },
+      {
+        title = "Cast bar fill (progress)",
+        collapsedKey = "player_cast_fill",
+        controls = {
+          { type = "radio", label = "Default (bright)", get = function() return _G.FlexxUIDB.castBarFillStyle or "default" end, value = "default", set = function(mode) _G.FlexxUIDB.castBarFillStyle = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+          { type = "radio", label = "Dark (muted)", get = function() return _G.FlexxUIDB.castBarFillStyle or "default" end, value = "dark", set = function(mode) _G.FlexxUIDB.castBarFillStyle = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+        },
+      },
+      {
+        title = "Player cast bar",
+        collapsedKey = "player_cast_player",
+        controls = {
+          { type = "toggle", label = "Show player cast bar", get = function() return _G.FlexxUIDB.castBarEnabled ~= false end, set = function(v) _G.FlexxUIDB.castBarEnabled = v; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end end },
+          { type = "toggle", label = "Hide default Blizzard cast bars (player & target)", get = function() return _G.FlexxUIDB.hideBlizzardCastBar == true end, set = function(v) _G.FlexxUIDB.hideBlizzardCastBar = v and true or false; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end end },
+          { type = "button", label = "Reset player cast bar position", width = 280, onClick = function() if ns.CastBar and ns.CastBar.ResetCastBarPosition then ns.CastBar.ResetCastBarPosition("player") end end },
+        },
+      },
+    },
+  })
 
-  -- ——— Cast bar tab ———
-  local castTitle = ArtFont(panelCast, "GameFontHighlight")
-  castTitle:SetPoint("TOPLEFT", 0, 0)
-  castTitle:SetText("FlexxUI cast bars")
-
-  local castTextLbl = ArtFont(panelCast, "GameFontHighlightSmall")
-  castTextLbl:SetPoint("TOPLEFT", castTitle, "BOTTOMLEFT", 0, -10)
-  castTextLbl:SetText("Spell name & cast time color")
-
-  local rbCastTxtLight = O.MakeRadio(panelCast, "Light", function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, "light", function(mode)
-    _G.FlexxUIDB.castBarTextColorMode = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastTxtLight:SetPoint("TOPLEFT", castTextLbl, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastTxtLight)
-
-  local rbCastTxtDark = O.MakeRadio(panelCast, "Dark", function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, "dark", function(mode)
-    _G.FlexxUIDB.castBarTextColorMode = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastTxtDark:SetPoint("TOPLEFT", rbCastTxtLight, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastTxtDark)
-
-  local rbCastTxtYellow = O.MakeRadio(panelCast, "Warm yellow (same as name preset)", function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, "warm_yellow", function(mode)
-    _G.FlexxUIDB.castBarTextColorMode = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastTxtYellow:SetPoint("TOPLEFT", rbCastTxtDark, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastTxtYellow)
-
-  local rbCastTxtClass = O.MakeRadio(panelCast, "Class color", function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, "class_color", function(mode)
-    _G.FlexxUIDB.castBarTextColorMode = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastTxtClass:SetPoint("TOPLEFT", rbCastTxtYellow, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastTxtClass)
-
-  local castFillHdr = ArtFont(panelCast, "GameFontHighlight")
-  castFillHdr:SetPoint("TOPLEFT", rbCastTxtClass, "BOTTOMLEFT", 0, -16)
-  castFillHdr:SetText("Cast bar fill (progress)")
-
-  local rbCastFillDef = O.MakeRadio(panelCast, "Default (bright)", function() return _G.FlexxUIDB.castBarFillStyle or "default" end, "default", function(mode)
-    _G.FlexxUIDB.castBarFillStyle = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastFillDef:SetPoint("TOPLEFT", castFillHdr, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastFillDef)
-
-  local rbCastFillDark = O.MakeRadio(panelCast, "Dark (muted)", function() return _G.FlexxUIDB.castBarFillStyle or "default" end, "dark", function(mode)
-    _G.FlexxUIDB.castBarFillStyle = mode
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-    O.RefreshControls()
-  end)
-  rbCastFillDark:SetPoint("TOPLEFT", rbCastFillDef, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbCastFillDark)
-
-  local castLblPlayer = ArtFont(panelCast, "GameFontHighlightSmall")
-  castLblPlayer:SetPoint("TOPLEFT", rbCastFillDark, "BOTTOMLEFT", 0, -16)
-  castLblPlayer:SetText("Player")
-
-  local cbCastEnabled = O.MakeToggle(panelCast, "Show player cast bar", function()
-    return _G.FlexxUIDB.castBarEnabled ~= false
-  end, function(v)
-    _G.FlexxUIDB.castBarEnabled = v
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbCastEnabled:SetPoint("TOPLEFT", castLblPlayer, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, cbCastEnabled)
-
-  local cbHideBlizzCast = O.MakeToggle(panelCast, "Hide default Blizzard cast bars (player & target)", function()
-    return _G.FlexxUIDB.hideBlizzardCastBar == true
-  end, function(v)
-    _G.FlexxUIDB.hideBlizzardCastBar = v and true or false
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbHideBlizzCast:SetPoint("TOPLEFT", cbCastEnabled, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbHideBlizzCast)
-
-  local btnResetPlayerCast = O.MakeFlatButton(panelCast, "Reset player cast bar position", 280, 24, function()
-    if ns.CastBar and ns.CastBar.ResetCastBarPosition then
-      ns.CastBar.ResetCastBarPosition("player")
-    end
-  end)
-  btnResetPlayerCast:SetPoint("TOPLEFT", cbHideBlizzCast, "BOTTOMLEFT", 0, -10)
-
-  -- ——— Name & text tab ———
-  local leftG = CreateFrame("Frame", nil, panelGeneral)
-  leftG:SetPoint("TOPLEFT", 0, 0); leftG:SetSize(400, PLAYER_SUBTAB_HEIGHT.general)
-
-  local nameColorLabel = ArtFont(leftG, "GameFontHighlight")
-  nameColorLabel:SetPoint("TOPLEFT", 0, 0)
-  nameColorLabel:SetText("Name text color (player frame)")
-
-  local rbPInherit = O.MakeRadio(leftG, "Same as Fonts default", function() return getNameColorOverrideValue("player") end, "inherit", function(mode)
-    setNameColorOverrideValue("player", mode)
-  end)
-  rbPInherit:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPInherit)
-  local rbPClass = O.MakeRadio(leftG, "Class color", function() return getNameColorOverrideValue("player") end, "class", function(mode)
-    setNameColorOverrideValue("player", mode)
-  end)
-  rbPClass:SetPoint("TOPLEFT", rbPInherit, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPClass)
-  local rbPWhite = O.MakeRadio(leftG, "White", function() return getNameColorOverrideValue("player") end, "white", function(mode)
-    setNameColorOverrideValue("player", mode)
-  end)
-  rbPWhite:SetPoint("TOPLEFT", rbPClass, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPWhite)
-  local rbPYellow = O.MakeRadio(leftG, "Warm yellow", function() return getNameColorOverrideValue("player") end, "yellow", function(mode)
-    setNameColorOverrideValue("player", mode)
-  end)
-  rbPYellow:SetPoint("TOPLEFT", rbPWhite, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPYellow)
-  local rbPDark = O.MakeRadio(leftG, "Dark (near black)", function() return getNameColorOverrideValue("player") end, "dark", function(mode)
-    setNameColorOverrideValue("player", mode)
-  end)
-  rbPDark:SetPoint("TOPLEFT", rbPYellow, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbPDark)
-
-  local cbShowName = O.MakeToggle(leftG, "Show unit name", function()
-    return _G.FlexxUIDB.showUnitFrameName ~= false
-  end, function(v)
-    _G.FlexxUIDB.showUnitFrameName = v
-    if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end
-  end, 390)
-  cbShowName:SetPoint("TOPLEFT", rbPDark, "BOTTOMLEFT", 0, -20)
-  table.insert(O.state.controls, cbShowName)
+  O.BuildSchemaPage(panelGeneral, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Name text color (player frame)",
+        collapsedKey = "player_name_color",
+        controls = {
+          { type = "radio", label = "Same as Fonts default", get = function() return getNameColorOverrideValue("player") end, value = "inherit", set = function(mode) setNameColorOverrideValue("player", mode) end },
+          { type = "radio", label = "Class color", get = function() return getNameColorOverrideValue("player") end, value = "class", set = function(mode) setNameColorOverrideValue("player", mode) end },
+          { type = "radio", label = "White", get = function() return getNameColorOverrideValue("player") end, value = "white", set = function(mode) setNameColorOverrideValue("player", mode) end },
+          { type = "radio", label = "Warm yellow", get = function() return getNameColorOverrideValue("player") end, value = "yellow", set = function(mode) setNameColorOverrideValue("player", mode) end },
+          { type = "radio", label = "Dark (near black)", get = function() return getNameColorOverrideValue("player") end, value = "dark", set = function(mode) setNameColorOverrideValue("player", mode) end, gapAfter = 12 },
+          { type = "toggle", label = "Show unit name", width = 390, get = function() return _G.FlexxUIDB.showUnitFrameName ~= false end, set = function(v) _G.FlexxUIDB.showUnitFrameName = v; if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end end },
+        },
+      },
+    },
+  })
 
   local function applyPlayerSubTab()
     O.EnsureDB()
@@ -1093,136 +929,98 @@ function O.BuildUnitTargetPage(content)
   panelFrame:SetHeight(TARGET_SUBTAB_HEIGHT.frame)
   panelCast:SetHeight(TARGET_SUBTAB_HEIGHT.cast)
 
-  local leftCol = CreateFrame("Frame", nil, panelFrame)
-  leftCol:SetPoint("TOPLEFT", 0, 0)
-  leftCol:SetSize(320, TARGET_SUBTAB_HEIGHT.frame)
-  local rightCol = CreateFrame("Frame", nil, panelFrame)
-  rightCol:SetPoint("TOPLEFT", 332, 0)
-  rightCol:SetSize(320, TARGET_SUBTAB_HEIGHT.frame)
+  O.BuildSchemaPage(panelFrame, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Name text color (target frame)",
+        collapsedKey = "target_name_color",
+        controls = {
+          { type = "radio", label = "Same as Fonts default", get = function() return getNameColorOverrideValue("target") end, value = "inherit", set = function(mode) setNameColorOverrideValue("target", mode) end },
+          { type = "radio", label = "Class color", get = function() return getNameColorOverrideValue("target") end, value = "class", set = function(mode) setNameColorOverrideValue("target", mode) end },
+          { type = "radio", label = "White", get = function() return getNameColorOverrideValue("target") end, value = "white", set = function(mode) setNameColorOverrideValue("target", mode) end },
+          { type = "radio", label = "Warm yellow", get = function() return getNameColorOverrideValue("target") end, value = "yellow", set = function(mode) setNameColorOverrideValue("target", mode) end },
+          { type = "radio", label = "Dark (near black)", get = function() return getNameColorOverrideValue("target") end, value = "dark", set = function(mode) setNameColorOverrideValue("target", mode) end, gapAfter = 12 },
+          { type = "toggle", label = "Show unit name", get = function() return _G.FlexxUIDB.showUnitFrameName ~= false end, set = function(v) _G.FlexxUIDB.showUnitFrameName = v; if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end end, width = 390 },
+        },
+      },
+      {
+        title = "Health bar",
+        collapsedKey = "target_health_bar",
+        controls = {
+          { type = "radio", label = "None", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "none", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Default", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "default", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Flat", get = function() return _G.FlexxUIDB.healthBarTexture end, value = "flat", set = function(name) _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "toggle", label = "Show incoming heals, absorbs, shields on health bar", get = function() return _G.FlexxUIDB.showHealthBarOverlays ~= false end, set = function(v) _G.FlexxUIDB.showHealthBarOverlays = v; if ns.UnitFrames and ns.UnitFrames.SetShowHealthBarOverlays then ns.UnitFrames.SetShowHealthBarOverlays(v) end end, width = 390 },
+        },
+      },
+      {
+        title = "Health value",
+        collapsedKey = "target_health_text",
+        controls = {
+          { type = "note", text = "Format" },
+          { type = "radio", label = "Show percent", get = function() return _G.FlexxUIDB.healthTextMode end, value = "percent", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Show value", get = function() return _G.FlexxUIDB.healthTextMode end, value = "value", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Hide health text", get = function() return _G.FlexxUIDB.healthTextMode end, value = "none", set = function(mode) _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Position" },
+          { type = "radio", label = "Right", get = function() return _G.FlexxUIDB.healthTextAlign or "right" end, value = "right", set = function(align) _G.FlexxUIDB.healthTextAlign = align; if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end; O.RefreshControls() end },
+          { type = "radio", label = "Center", get = function() return _G.FlexxUIDB.healthTextAlign or "right" end, value = "center", set = function(align) _G.FlexxUIDB.healthTextAlign = align; if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end; O.RefreshControls() end, gapAfter = 12 },
+          { type = "note", text = "Color" },
+          { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "class", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "white", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "dark", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+        },
+      },
+      {
+        title = "Resource bar text and layout",
+        hint = "Legacy resource controls preserved while migrating to schema.",
+        collapsedKey = "target_resource_legacy",
+        advanced = true,
+        controls = {
+          {
+            type = "custom",
+            build = function(parent)
+              local row = CreateFrame("Frame", nil, parent)
+              row:SetSize(640, 560)
+              local anchor = CreateFrame("Frame", nil, row)
+              anchor:SetPoint("TOPLEFT", 0, 0)
+              anchor:SetSize(1, 1)
+              addResourceBarLayoutSection(row, anchor, 0)
+              return row
+            end,
+            gapAfter = 8,
+          },
+          {
+            type = "custom",
+            build = function(parent)
+              local row = CreateFrame("Frame", nil, parent)
+              row:SetSize(640, 980)
+              local anchor = CreateFrame("Frame", nil, row)
+              anchor:SetPoint("TOPLEFT", 0, 0)
+              anchor:SetSize(1, 1)
+              addResourceBarColorSection(row, anchor, 0)
+              return row
+            end,
+          },
+        },
+      },
+    },
+  })
 
-  local nameColorLabel = ArtFont(leftCol, "GameFontHighlight")
-  nameColorLabel:SetPoint("TOPLEFT", 0, 0)
-  nameColorLabel:SetText("Name text color (target frame)")
-
-  local rbTInherit = O.MakeRadio(leftCol, "Same as Fonts default", function() return getNameColorOverrideValue("target") end, "inherit", function(mode)
-    setNameColorOverrideValue("target", mode)
-  end)
-  rbTInherit:SetPoint("TOPLEFT", nameColorLabel, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbTInherit)
-  local rbTClass = O.MakeRadio(leftCol, "Class color", function() return getNameColorOverrideValue("target") end, "class", function(mode)
-    setNameColorOverrideValue("target", mode)
-  end)
-  rbTClass:SetPoint("TOPLEFT", rbTInherit, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbTClass)
-  local rbTWhite = O.MakeRadio(leftCol, "White", function() return getNameColorOverrideValue("target") end, "white", function(mode)
-    setNameColorOverrideValue("target", mode)
-  end)
-  rbTWhite:SetPoint("TOPLEFT", rbTClass, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbTWhite)
-  local rbTYellow = O.MakeRadio(leftCol, "Warm yellow", function() return getNameColorOverrideValue("target") end, "yellow", function(mode)
-    setNameColorOverrideValue("target", mode)
-  end)
-  rbTYellow:SetPoint("TOPLEFT", rbTWhite, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbTYellow)
-  local rbTDark = O.MakeRadio(leftCol, "Dark (near black)", function() return getNameColorOverrideValue("target") end, "dark", function(mode)
-    setNameColorOverrideValue("target", mode)
-  end)
-  rbTDark:SetPoint("TOPLEFT", rbTYellow, "BOTTOMLEFT", 0, -8)
-  table.insert(O.state.controls, rbTDark)
-
-  local cbShowName = O.MakeToggle(leftCol, "Show unit name", function()
-    return _G.FlexxUIDB.showUnitFrameName ~= false
-  end, function(v)
-    _G.FlexxUIDB.showUnitFrameName = v
-    if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end
-  end)
-  cbShowName:SetPoint("TOPLEFT", rbTDark, "BOTTOMLEFT", 0, -20)
-  table.insert(O.state.controls, cbShowName)
-
-  local lbl2 = ArtFont(rightCol, "GameFontHighlight"); lbl2:SetPoint("TOPLEFT", 0, 0); lbl2:SetText("Health Bar: texture")
-  local rbTexNone = O.MakeRadio(rightCol, "None (solid color)", function() return _G.FlexxUIDB.healthBarTexture end, "none", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexNone:SetPoint("TOPLEFT", lbl2, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexNone)
-  local rbTexDefault = O.MakeRadio(rightCol, "Default", function() return _G.FlexxUIDB.healthBarTexture end, "default", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexDefault:SetPoint("TOPLEFT", rbTexNone, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexDefault)
-  local rbTexFlat = O.MakeRadio(rightCol, "Flat", function() return _G.FlexxUIDB.healthBarTexture end, "flat", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexFlat:SetPoint("TOPLEFT", rbTexDefault, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexFlat)
-  local rbTexSmooth = O.MakeRadio(rightCol, "Smooth", function() return _G.FlexxUIDB.healthBarTexture end, "smooth", function(name)
-    _G.FlexxUIDB.healthBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetHealthBarTexture then ns.UnitFrames.SetHealthBarTexture(name) end; O.RefreshControls()
-  end); rbTexSmooth:SetPoint("TOPLEFT", rbTexFlat, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbTexSmooth)
-
-  local cbOverlays = O.MakeToggle(rightCol, "Show incoming heals, absorbs, shields on health bar", function()
-    return _G.FlexxUIDB.showHealthBarOverlays ~= false
-  end, function(v)
-    _G.FlexxUIDB.showHealthBarOverlays = v
-    if ns.UnitFrames and ns.UnitFrames.SetShowHealthBarOverlays then ns.UnitFrames.SetShowHealthBarOverlays(v) end
-  end, 300)
-  cbOverlays:SetPoint("TOPLEFT", rbTexSmooth, "BOTTOMLEFT", 0, -20)
-  table.insert(O.state.controls, cbOverlays)
-
-  local lbl3 = ArtFont(leftCol, "GameFontHighlight"); lbl3:SetPoint("TOPLEFT", cbShowName, "BOTTOMLEFT", 0, -20); lbl3:SetText("Health value: format")
-  local rbPct = O.MakeRadio(leftCol, "Show percent", function() return _G.FlexxUIDB.healthTextMode end, "percent", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbPct:SetPoint("TOPLEFT", lbl3, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbPct)
-  local rbVal = O.MakeRadio(leftCol, "Show value", function() return _G.FlexxUIDB.healthTextMode end, "value", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbVal:SetPoint("TOPLEFT", rbPct, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbVal)
-  local rbHide = O.MakeRadio(leftCol, "Hide health text", function() return _G.FlexxUIDB.healthTextMode end, "none", function(mode)
-    _G.FlexxUIDB.healthTextMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextMode then ns.UnitFrames.SetHealthTextMode(mode) end; O.RefreshControls()
-  end); rbHide:SetPoint("TOPLEFT", rbVal, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHide)
-
-  local lblPos = ArtFont(leftCol, "GameFontHighlight"); lblPos:SetPoint("TOPLEFT", rbHide, "BOTTOMLEFT", 0, -20); lblPos:SetText("Health value: position")
-  local rbAlignRight = O.MakeRadio(leftCol, "Right", function() return _G.FlexxUIDB.healthTextAlign or "right" end, "right", function(align)
-    _G.FlexxUIDB.healthTextAlign = align
-    if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end
-    O.RefreshControls()
-  end); rbAlignRight:SetPoint("TOPLEFT", lblPos, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbAlignRight)
-  local rbAlignCenter = O.MakeRadio(leftCol, "Center", function() return _G.FlexxUIDB.healthTextAlign or "right" end, "center", function(align)
-    _G.FlexxUIDB.healthTextAlign = align
-    if ns.UnitFrames and ns.UnitFrames.SetHealthTextAlign then ns.UnitFrames.SetHealthTextAlign(align) end
-    O.RefreshControls()
-  end);   rbAlignCenter:SetPoint("TOPLEFT", rbAlignRight, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbAlignCenter)
-
-  addResourceBarLayoutSection(leftCol, rbAlignCenter, 20)
-
-  local lbl4 = ArtFont(rightCol, "GameFontHighlight"); lbl4:SetPoint("TOPLEFT", cbOverlays, "BOTTOMLEFT", 0, -20); lbl4:SetText("Health value: color")
-  local rbHCName = O.MakeRadio(rightCol, "Class color", function() return _G.FlexxUIDB.healthTextColorMode end, "name", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCName:SetPoint("TOPLEFT", lbl4, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCName)
-  local rbHCBar = O.MakeRadio(rightCol, "Match health bar", function() return _G.FlexxUIDB.healthTextColorMode end, "classdark", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCBar:SetPoint("TOPLEFT", rbHCName, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCBar)
-  local rbHCSolid = O.MakeRadio(rightCol, "Solid light gray", function() return _G.FlexxUIDB.healthTextColorMode end, "solid", function(mode)
-    _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls()
-  end); rbHCSolid:SetPoint("TOPLEFT", rbHCBar, "BOTTOMLEFT", 0, -8); table.insert(O.state.controls, rbHCSolid)
-
-  local lblResColorT = ArtFont(rightCol, "GameFontHighlight")
-  lblResColorT:SetPoint("TOPLEFT", rbHCSolid, "BOTTOMLEFT", 0, -20)
-  lblResColorT:SetText("Resource text color")
-
-  addResourceBarColorSection(rightCol, lblResColorT, 8)
-
-  local tcHdr = ArtFont(panelCast, "GameFontHighlight")
-  tcHdr:SetPoint("TOPLEFT", 0, 0)
-  tcHdr:SetText("Target cast bar")
-
-  local cbCastTarget = O.MakeToggle(panelCast, "Show target cast bar", function()
-    return _G.FlexxUIDB.castBarTargetEnabled ~= false
-  end, function(v)
-    _G.FlexxUIDB.castBarTargetEnabled = v
-    if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end
-  end)
-  cbCastTarget:SetPoint("TOPLEFT", tcHdr, "BOTTOMLEFT", 0, -10)
-  table.insert(O.state.controls, cbCastTarget)
-
-  local btnResetTargetCast = O.MakeFlatButton(panelCast, "Reset target cast bar position", 280, 24, function()
-    if ns.CastBar and ns.CastBar.ResetCastBarPosition then
-      ns.CastBar.ResetCastBarPosition("target")
-    end
-  end)
-  btnResetTargetCast:SetPoint("TOPLEFT", cbCastTarget, "BOTTOMLEFT", 0, -10)
+  O.BuildSchemaPage(panelCast, {
+    cardAlpha = 0.80,
+    sections = {
+      {
+        title = "Target cast bar",
+        collapsedKey = "target_castbar",
+        controls = {
+          { type = "toggle", label = "Show target cast bar", get = function() return _G.FlexxUIDB.castBarTargetEnabled ~= false end, set = function(v) _G.FlexxUIDB.castBarTargetEnabled = v; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end end },
+          { type = "button", label = "Reset target cast bar position", width = 280, onClick = function() if ns.CastBar and ns.CastBar.ResetCastBarPosition then ns.CastBar.ResetCastBarPosition("target") end end },
+        },
+      },
+    },
+  })
 
   local function applyTargetSubTab()
     O.EnsureDB()

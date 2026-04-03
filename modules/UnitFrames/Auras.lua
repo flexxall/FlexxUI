@@ -3,16 +3,29 @@ local UF = ns.UnitFrames
 
 local ICON_SIZE = 30
 local ICON_GAP = 2
-local MAX_ICONS = 10
-local MAX_TIMER_ROWS = 8
-local TIMER_ROW_H = 18
-local TIMER_ICON = 16
-local TIMER_ROW_GAP = 2
+--- How many harmful/helpful auras to scan and pool UI for (Blizzard uses NUM_TOTAL_AURA_DISPLAYS, typically 32; we previously stopped at 10).
+local MAX_AURA_DISPLAY = 32
+do
+  local n = _G.NUM_TOTAL_AURA_DISPLAYS or _G.NUM_AURA_DISPLAYS
+  if type(n) == "number" and n >= 16 then
+    MAX_AURA_DISPLAY = math.min(64, n)
+  end
+end
+local MAX_ICONS = MAX_AURA_DISPLAY
+local MAX_TIMER_ROWS = MAX_AURA_DISPLAY
+--- Debuff timer bar row height (icon + status strip). +50% vs original 18px ("half again as tall").
+local TIMER_ROW_H = 27
+local TIMER_ICON = 24
+local TIMER_ROW_GAP = 3
+local TIMER_BAR_TRIM = 6
+local TIMER_ICON_PAD = 6
 
--- Debuff row / timer stack sits just above the health bar; buff row stacks above it.
-local DEFAULT_DEBUFF_AX, DEFAULT_DEBUFF_AY = 0, 4
+-- Debuff row / timer stack above the health bar. Y offset: small gap + half health bar height (matches Frames.lua health h≈28 → +14).
+local HEALTH_BAR_REF_H = 28
+local DEFAULT_DEBUFF_AX = 0
+local DEFAULT_DEBUFF_AY = 4 + math.floor(HEALTH_BAR_REF_H / 2)
 local DEFAULT_BUFF_AX = 0
-local DEFAULT_BUFF_AY = 4 + ICON_SIZE + ICON_GAP
+local DEFAULT_BUFF_AY = DEFAULT_DEBUFF_AY + ICON_SIZE + ICON_GAP
 
 local function MigrateLegacyAuraAnchors(db)
   if not db then return end
@@ -162,6 +175,30 @@ local function EnsureAuraDB()
   if db.unitFrameAuraDevPreviewBuff == nil then db.unitFrameAuraDevPreviewBuff = false end
   if db.unitFrameAuraDevPreviewDebuff == nil then db.unitFrameAuraDevPreviewDebuff = false end
   if db.unitFrameAuraDevPreviewBars == nil then db.unitFrameAuraDevPreviewBars = false end
+  --- One-time: debuff row was +4px; now +4 + half reference health bar (14px) = 18. Buff row follows stack spacing when still legacy.
+  if db._auraDebuffYRaised2026 == nil then
+    local legacyD, legacyB = 4, 4 + ICON_SIZE + ICON_GAP
+    local newD, newB = DEFAULT_DEBUFF_AY, DEFAULT_BUFF_AY
+    local function bumpPair(prefix)
+      local dk = prefix .. "AuraDebuffAnchorY"
+      local bk = prefix .. "AuraBuffAnchorY"
+      if db[dk] == legacyD then
+        db[dk] = newD
+        if db[bk] == legacyB then
+          db[bk] = newB
+        end
+      end
+    end
+    bumpPair("player")
+    bumpPair("target")
+    if db.unitFrameAuraDebuffAnchorY == legacyD then
+      db.unitFrameAuraDebuffAnchorY = newD
+      if db.unitFrameAuraBuffAnchorY == legacyB then
+        db.unitFrameAuraBuffAnchorY = newB
+      end
+    end
+    db._auraDebuffYRaised2026 = true
+  end
   SyncLegacyFromPlayer(db)
 end
 
@@ -169,13 +206,30 @@ local function CollectAuras(unit, filter, maxN)
   local out = {}
   if not unit or not UnitExists(unit) then return out end
   if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return out end
+  maxN = maxN or MAX_AURA_DISPLAY
+  --- Blizzard helper: same index walk as the default aura UI (handles client quirks vs a raw loop).
+  if AuraUtil and AuraUtil.ForEachAura then
+    local okScan = pcall(function()
+      --- 5th arg `true`: use AuraData tables (matches default UI); omitting can change what the callback receives.
+      AuraUtil.ForEachAura(unit, filter, maxN, function(aura)
+        if aura then
+          out[#out + 1] = aura
+        end
+      end, true)
+    end)
+    if okScan then
+      return out
+    end
+    out = {}
+  end
   local i = 1
-  while #out < maxN do
+  local cap = math.min(maxN, 64)
+  while #out < maxN and i <= cap do
     local ok, data = pcall(function()
       return C_UnitAuras.GetAuraDataByIndex(unit, i, filter)
     end)
     if not ok or not data then break end
-    table.insert(out, data)
+    out[#out + 1] = data
     i = i + 1
   end
   return out
@@ -256,10 +310,11 @@ local function UpdateAuraButton(btn, data, devPreviewCooldown)
   end
   ApplyButtonLayout(btn)
 
-  if data.icon then
-    btn.icon:SetTexture(data.icon)
+  local tex = data.icon or data.iconFileID
+  if tex then
+    btn.icon:SetTexture(tex)
   end
-  btn.spellId = data.spellId
+  btn.spellId = data.spellId or data.spellID
   btn.auraName = data.name
   btn.border:SetVertexColor(btn.isDebuff and 0.9 or 0.35, btn.isDebuff and 0.2 or 0.65, btn.isDebuff and 0.15 or 0.35, 1)
 
@@ -318,8 +373,8 @@ local function CreateTimerBarRow(parent)
   icon:SetPoint("LEFT", 0, 0)
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   local bar = CreateFrame("StatusBar", nil, row)
-  bar:SetHeight(TIMER_ROW_H - 4)
-  bar:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+  bar:SetHeight(math.max(8, TIMER_ROW_H - TIMER_BAR_TRIM))
+  bar:SetPoint("LEFT", icon, "RIGHT", TIMER_ICON_PAD, 0)
   bar:SetPoint("RIGHT", row, "RIGHT", 0, 0)
   bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
   bar:SetMinMaxValues(0, 1)
@@ -335,6 +390,8 @@ local function CreateTimerBarRow(parent)
 end
 
 local function UpdateTimerBarRow(row, data, devPreviewTimer)
+  row._flexxDur = nil
+  row._flexxExp = nil
   if not data then
     row:Hide()
     return
@@ -351,17 +408,41 @@ local function UpdateTimerBarRow(row, data, devPreviewTimer)
     row:Hide()
     return
   end
-  if data.icon then
-    row.icon:SetTexture(data.icon)
+  local tex = data.icon or data.iconFileID
+  if tex then
+    row.icon:SetTexture(tex)
   end
+  -- Persist plain numbers for OnUpdate: UNIT_AURA does not fire every tick while auras tick down.
+  row._flexxDur = dur
+  row._flexxExp = exp
   local remain = 0
   pcall(function()
-    remain = exp - GetTime()
+    remain = UF.PlainNumber(exp - GetTime(), 0) or 0
     if remain < 0 then remain = 0 end
   end)
   row.bar:SetMinMaxValues(0, dur)
   row.bar:SetValue(remain)
   row:Show()
+end
+
+--- Smooth countdown: StatusBar only updates when this runs; aura events alone are too sparse.
+local function AuraTimerBarHost_OnUpdate(host)
+  if not host or not host:IsShown() then return end
+  local uf = host:GetParent()
+  if not uf or not uf.auraTimerBarRows then return end
+  local now = GetTime()
+  for i = 1, MAX_TIMER_ROWS do
+    local row = uf.auraTimerBarRows[i]
+    if row and row:IsShown() and row._flexxExp and row._flexxDur and row._flexxDur > 0 then
+      local remain = 0
+      pcall(function()
+        remain = UF.PlainNumber(row._flexxExp - now, 0) or 0
+        if remain < 0 then remain = 0 end
+      end)
+      row.bar:SetMinMaxValues(0, row._flexxDur)
+      row.bar:SetValue(remain)
+    end
+  end
 end
 
 function UF.CreateUnitAuras(f)
@@ -372,9 +453,10 @@ function UF.CreateUnitAuras(f)
 
   f.auraTimerBarHost = CreateFrame("Frame", nil, f)
   f.auraTimerBarHost:SetFrameLevel(z)
-  f.auraTimerBarHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, 4)
+  f.auraTimerBarHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, DEFAULT_DEBUFF_AY)
   f.auraTimerBarHost:SetWidth(200)
   f.auraTimerBarHost:Hide()
+  f.auraTimerBarHost:SetScript("OnUpdate", AuraTimerBarHost_OnUpdate)
   f.auraTimerBarRows = {}
   for i = 1, MAX_TIMER_ROWS do
     f.auraTimerBarRows[i] = CreateTimerBarRow(f.auraTimerBarHost)
@@ -382,7 +464,7 @@ function UF.CreateUnitAuras(f)
 
   f.auraDebuffHost = CreateFrame("Frame", nil, f)
   f.auraDebuffHost:SetFrameLevel(z)
-  f.auraDebuffHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, 4)
+  f.auraDebuffHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, DEFAULT_DEBUFF_AY)
   f.auraDebuffHost:SetWidth((ICON_SIZE + ICON_GAP) * MAX_ICONS)
   f.auraDebuffHost:SetHeight(ICON_SIZE)
   f.auraDebuffHost:EnableMouse(false)

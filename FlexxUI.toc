@@ -8,11 +8,13 @@
 ## X-Website: https://github.com/flexxall/FlexxUI
 FlexxUI.lua
 core\DB.lua
+core\Debug.lua
 core\Fonts.lua
 core\Movers.lua
 core\Options.lua
 core\Options_State.lua
 core\Options_Controls.lua
+core\Options_Schema.lua
 core\Options_Pages.lua
 core\Options_Panel.lua
 core\Minimap.lua
@@ -24,4 +26,5 @@ modules\UnitFrames\Frames.lua
 modules\UnitFrames\Auras.lua
 modules\UnitFrames\API.lua
 modules\CastBar.lua
+modules\CombatCenter.lua
 FlexxUI_UI.lua

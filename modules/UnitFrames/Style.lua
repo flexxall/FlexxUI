@@ -16,13 +16,25 @@ function UF.ApplyHealthBarMissingColor(bar, unit)
   UF.EnsureDB()
   unit = unit or bar._flexxUnit
   local db = _G.FlexxUIDB or {}
+  local r, g, b, a
   if unit == "player" and (db.playerHealthColorMode or "class") == "dark" then
-    local a = (db.healthBarMissingColor and type(db.healthBarMissingColor.a) == "number") and db.healthBarMissingColor.a or DARK_HEALTH_DEFICIT_A
-    bar:SetBackdropColor(DARK_HEALTH_DEFICIT_R, DARK_HEALTH_DEFICIT_G, DARK_HEALTH_DEFICIT_B, math.max(0.55, math.min(0.95, a)))
+    a = (db.healthBarMissingColor and type(db.healthBarMissingColor.a) == "number") and db.healthBarMissingColor.a or DARK_HEALTH_DEFICIT_A
+    a = math.max(0.55, math.min(0.95, a))
+    r, g, b = DARK_HEALTH_DEFICIT_R, DARK_HEALTH_DEFICIT_G, DARK_HEALTH_DEFICIT_B
+  else
+    local c = db.healthBarMissingColor or { r = 0, g = 0, b = 0, a = 0.55 }
+    r, g, b, a = c.r or 0, c.g or 0, c.b or 0, c.a or 0.55
+  end
+  --- Deficit on its own frame (f.healthMissingBg) so incoming/absorb can sit *between* deficit and the fill texture.
+  if bar._flexxMissingBg and bar._flexxMissingBg._flexxDeficitTex then
+    pcall(function()
+      bar._flexxMissingBg._flexxDeficitTex:SetVertexColor(r, g, b, a)
+    end)
+    pcall(function()
+      bar:SetBackdropColor(0, 0, 0, 0)
+    end)
     return
   end
-  local c = db.healthBarMissingColor or { r = 0, g = 0, b = 0, a = 0.55 }
-  local r, g, b, a = c.r or 0, c.g or 0, c.b or 0, c.a or 0.55
   bar:SetBackdropColor(r, g, b, a)
 end
 
@@ -314,9 +326,8 @@ function UF.EnsurePlayerLowHealthChrome(f)
   local h = f.health
   local glow = CreateFrame("Frame", nil, f, "BackdropTemplate")
   glow:SetFrameStrata(f:GetFrameStrata())
-  local pred = f.healthPrediction
-  local predLevel = (pred and pred.GetFrameLevel and pred:GetFrameLevel()) or 100
-  glow:SetFrameLevel(predLevel + 2)
+  local hz = (h.GetFrameLevel and h:GetFrameLevel()) or 0
+  glow:SetFrameLevel(hz + 1)
   glow:SetPoint("TOPLEFT", h, "TOPLEFT", -3, 3)
   glow:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", 3, -3)
   glow:SetBackdrop({
@@ -380,7 +391,7 @@ function UF.EnsureThreatGlow(f)
   local root = CreateFrame("Frame", nil, f)
   root:SetFrameStrata(f:GetFrameStrata())
   local z = (f.GetFrameLevel and f:GetFrameLevel()) or 0
-  -- z+1: under f.health/f.power (z+2) and under f.healthPrediction (z+100); see UF.ApplyUnitFrameChildLevels.
+  -- z+1: under health fill and prediction; see UF.ApplyUnitFrameChildLevels.
   root:SetFrameLevel(z + 1)
   root:EnableMouse(false)
   root:Hide()

@@ -20,6 +20,8 @@ O.state = O.state or {
   applyFontsSubTab = nil,
   devNavButtons = {},
   applyDevSubTab = nil,
+  combatNavButtons = {},
+  applyCombatSubTab = nil,
 }
 
 function O.EnsureDB()
@@ -78,10 +80,30 @@ function O.EnsureDB()
   if ns.Fonts and ns.Fonts.EnsureDB then ns.Fonts.EnsureDB() end
   if _G.FlexxUIDB.optionsGeneralSubTab == nil then _G.FlexxUIDB.optionsGeneralSubTab = "settings" end
   if _G.FlexxUIDB.optionsFontsSubTab == nil then _G.FlexxUIDB.optionsFontsSubTab = "ui" end
+  if _G.FlexxUIDB.optionsShowAdvanced == nil then _G.FlexxUIDB.optionsShowAdvanced = false end
+  if _G.FlexxUIDB.combatCenter == nil then _G.FlexxUIDB.combatCenter = {} end
+  local cc = _G.FlexxUIDB.combatCenter
+  if cc.enabled == nil then cc.enabled = false end
+  if cc.onlyInCombat == nil then cc.onlyInCombat = true end
+  if cc.lockFrame == nil then cc.lockFrame = false end
+  if type(cc.scale) ~= "number" or cc.scale ~= cc.scale then cc.scale = 1 end
+  if type(cc.iconSize) ~= "number" then cc.iconSize = 44 end
+  if type(cc.spacing) ~= "number" then cc.spacing = 8 end
+  if type(cc.debuffSize) ~= "number" then cc.debuffSize = 54 end
+  if cc.showResourceLane == nil then cc.showResourceLane = true end
+  if cc.showRotationLane == nil then cc.showRotationLane = true end
+  if cc.showCooldownLane == nil then cc.showCooldownLane = true end
+  if cc.showDebuffLane == nil then cc.showDebuffLane = true end
+  if cc.trackOnlyRelevantDebuffs == nil then cc.trackOnlyRelevantDebuffs = true end
+  if type(cc.extraCooldownSpellIDs) ~= "table" then cc.extraCooldownSpellIDs = {} end
+  if type(cc.anchorX) ~= "number" then cc.anchorX = 0 end
+  if type(cc.anchorY) ~= "number" then cc.anchorY = -180 end
+  if _G.FlexxUIDB.optionsCollapsed == nil then _G.FlexxUIDB.optionsCollapsed = {} end
   if _G.FlexxUIDB.optionsDevSubTab == nil and _G.FlexxUIDB.optionsDebugSubTab ~= nil then
     _G.FlexxUIDB.optionsDevSubTab = _G.FlexxUIDB.optionsDebugSubTab
   end
   if _G.FlexxUIDB.optionsDevSubTab == nil then _G.FlexxUIDB.optionsDevSubTab = "cast" end
+  if _G.FlexxUIDB.optionsCombatSubTab == nil then _G.FlexxUIDB.optionsCombatSubTab = "overview" end
   if ns.UnitFrames and ns.UnitFrames.EnsureAuraDB then ns.UnitFrames.EnsureAuraDB() end
 end
 
@@ -216,6 +238,21 @@ function O.SelectDevSubTab(subKey)
   O.RefreshScrollPages()
 end
 
+function O.SelectCombatSubTab(subKey)
+  O.EnsureDB()
+  if subKey ~= "overview" and subKey ~= "display" and subKey ~= "tracking" then
+    subKey = "overview"
+  end
+  _G.FlexxUIDB.optionsCombatSubTab = subKey
+  for _, btn in pairs(O.state.combatNavButtons or {}) do
+    if btn and btn.RefreshCombatNav then btn:RefreshCombatNav() end
+  end
+  if O.state.applyCombatSubTab then
+    O.state.applyCombatSubTab()
+  end
+  O.RefreshScrollPages()
+end
+
 function O.SelectTab(tabKey)
   for key, holder in pairs(O.state.pageHolders) do
     holder:SetShown(key == tabKey)
@@ -242,6 +279,9 @@ function O.SelectTab(tabKey)
   end
   if tabKey == "dev" and O.state.applyDevSubTab then
     O.state.applyDevSubTab()
+  end
+  if tabKey == "combat" and O.state.applyCombatSubTab then
+    O.state.applyCombatSubTab()
   end
   O.RefreshScrollPages()
 end
