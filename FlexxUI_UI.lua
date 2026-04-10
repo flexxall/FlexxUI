@@ -7,8 +7,8 @@ loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 local function EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
-  if _G.FlexxUIDB.optionsDevSubTab == nil and _G.FlexxUIDB.optionsDebugSubTab ~= nil then
-    _G.FlexxUIDB.optionsDevSubTab = _G.FlexxUIDB.optionsDebugSubTab
+  if ns.Options and ns.Options.MigrateLegacyOptionKeys then
+    ns.Options.MigrateLegacyOptionKeys()
   end
   if ns.UnitFrames and ns.UnitFrames.MigrateLegacyAuraLayout then
     ns.UnitFrames.MigrateLegacyAuraLayout()

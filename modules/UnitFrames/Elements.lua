@@ -847,6 +847,37 @@ function UF.UpdatePowerBar(f)
   UF.UpdatePowerText(f, nil, nil, false)
 end
 
+--- Numeric tuple for addons (e.g. Combat Center lane 1): same read/coercion as UpdatePowerBar.
+--- Returns powerType, current, max; nil,0,0 when the bar would be hidden. Last resort may return raw cur/maxP for SetValue pcall.
+function UF.GetUnitPowerBarValues(unit)
+  if not unit or not UnitExists(unit) then return nil, 0, 0 end
+  local pt = nil
+  local okPt, vPt = pcall(UnitPowerType, unit)
+  if okPt and vPt ~= nil then
+    pt = vPt
+  else
+    pt = 0
+  end
+  local maxP = UnitPowerMax(unit, pt)
+  local cur = UnitPower(unit, pt)
+  local okEmpty, empty = pcall(function()
+    return maxP <= 0
+  end)
+  if okEmpty and empty then return nil, 0, 0 end
+  local okNorm, cNum, mNum = pcall(function()
+    local c = cur + 0
+    local m = maxP + 0
+    if m <= 0 then return nil, nil end
+    if c > m then c = m end
+    if c < 0 then c = 0 end
+    return c, m
+  end)
+  if okNorm and cNum ~= nil and mNum ~= nil then
+    return pt, cNum, mNum
+  end
+  return pt, cur, maxP
+end
+
 function UF.UpdatePlayerResting(f)
   if not f or f.unit ~= "player" or not f.restingIcons then return end
   --- IsResting() stays true in rested areas while fighting (e.g. dummies); hide zzz whenever in combat.
@@ -872,6 +903,44 @@ function UF.UpdatePlayerResting(f)
       fs:Hide()
     end
   end
+end
+
+--- Compact raid subgroup (G1–G8) or G1 when in a party; top-right of player frame. Hidden when solo.
+function UF.UpdatePlayerGroupIndicator(f)
+  if not f or f.unit ~= "player" or not f.groupIndicator then return end
+  local fs = f.groupIndicator
+  if not IsInGroup() then
+    if _G.FlexxUIDB and _G.FlexxUIDB.devGroupIndicatorShowSolo then
+      fs:SetFormattedText("G1")
+      fs:Show()
+      return
+    end
+    fs:Hide()
+    return
+  end
+  local subgroup
+  if IsInRaid() then
+    subgroup = nil
+    local n = GetNumGroupMembers() or 0
+    for i = 1, n do
+      local rid = "raid" .. i
+      if UnitExists(rid) and UnitIsUnit(rid, "player") then
+        local _, _, sg = GetRaidRosterInfo(i)
+        if type(sg) == "number" and sg >= 1 and sg <= 8 then
+          subgroup = sg
+        end
+        break
+      end
+    end
+    if not subgroup then
+      fs:Hide()
+      return
+    end
+  else
+    subgroup = 1
+  end
+  fs:SetFormattedText("G%d", subgroup)
+  fs:Show()
 end
 
 local function EnsureUnitFrameVisibilityRetry()
@@ -982,6 +1051,7 @@ function UF.UpdateUnitFrame(f)
   if f.unit == "player" then
     UF.UpdatePlayerResting(f)
     UF.UpdatePlayerLowHealthChrome(f)
+    UF.UpdatePlayerGroupIndicator(f)
   end
   UF.UpdateThreatGlow(f)
   if UF.UpdateUnitAuras then UF.UpdateUnitAuras(f) end

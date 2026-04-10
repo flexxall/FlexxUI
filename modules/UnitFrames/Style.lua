@@ -216,6 +216,25 @@ function UF.CreatePowerBar(parent, w, h)
   return bar
 end
 
+--- Death Knight: Frost (cyan), Unholy (green), Blood (red) for runic bar + addons that mirror DK resources.
+--- Returns r, g, b or nil if not a DK player.
+function UF.GetDeathKnightSpecResourceRGB(unit)
+  if not unit or unit ~= "player" or not UnitExists(unit) then return nil end
+  local classId = select(3, UnitClass(unit))
+  if type(classId) ~= "number" or classId ~= 6 then return nil end
+  local spec = GetSpecialization and GetSpecialization()
+  if spec == 1 then
+    return 0.82, 0.14, 0.18
+  end
+  if spec == 2 then
+    return 0.00, 0.82, 1.00
+  end
+  if spec == 3 then
+    return 0.38, 0.82, 0.34
+  end
+  return 0.00, 0.82, 1.00
+end
+
 function UF.ApplyPowerBarColor(bar, unit, powerType)
   if not bar or not unit then return end
   UF.EnsureDB()
@@ -236,6 +255,27 @@ function UF.ApplyPowerBarColor(bar, unit, powerType)
       bar:SetStatusBarColor(0.22, 0.52, 0.95)
     end
   else
+    local isRunic = false
+    local E = Enum and Enum.PowerType
+    if E and E.RunicPower ~= nil and pType == E.RunicPower then
+      isRunic = true
+    else
+      pcall(function()
+        if type(pType) == "number" and pType == 6 then isRunic = true end
+      end)
+    end
+    if isRunic then
+      local dr, dg, db = UF.GetDeathKnightSpecResourceRGB(unit)
+      if dr then
+        if dark then
+          bar:SetStatusBarColor(dr * 0.58 + 0.08, dg * 0.58 + 0.08, db * 0.58 + 0.08)
+        else
+          bar:SetStatusBarColor(dr, dg, db)
+        end
+        UF.ApplyPowerBarBackdrop(bar)
+        return
+      end
+    end
     if dark then
       bar:SetStatusBarColor(0.55, 0.48, 0.12)
     else
@@ -380,8 +420,10 @@ function UF.UpdatePlayerLowHealthChrome(f)
   end
 end
 
---- Single aggro art texture around the health bar (Media/aggroMask.png); tinted by threat color.
---- Frame size matches the PNG pixel size (1:1 UI units at scale 1) via GetFileWidth/GetFileHeight.
+--- Media/aggroMask.png size when GetFileWidth/GetFileHeight are unavailable (keep in sync with the PNG).
+local AGGRO_MASK_FALLBACK_W, AGGRO_MASK_FALLBACK_H = 280, 82
+
+--- Native-sized texture (no scaling). PNG center aligns with health bar center; inner cutout is authored slightly smaller than the bar for gaps.
 function UF.EnsureThreatGlow(f)
   if not f or f._threatGlowRoot then return end
   if f.unit == "target" then return end
@@ -403,7 +445,7 @@ function UF.EnsureThreatGlow(f)
   local fw = tex.GetFileWidth and tex:GetFileWidth() or 0
   local fh = tex.GetFileHeight and tex:GetFileHeight() or 0
   if type(fw) ~= "number" or type(fh) ~= "number" or fw <= 0 or fh <= 0 then
-    fw, fh = 245, 70
+    fw, fh = AGGRO_MASK_FALLBACK_W, AGGRO_MASK_FALLBACK_H
   end
   root:SetSize(fw, fh)
   tex:SetAllPoints()
@@ -435,29 +477,47 @@ function UF.UpdateThreatGlow(f)
   UF.EnsureThreatGlow(f)
   local root = f._threatGlowRoot
   local tex = f._threatGlowTex
-  if not root or not tex then return end
+  local h = f.health
+  if not root or not tex or not h then return end
+  root:ClearAllPoints()
+  root:SetPoint("CENTER", h, "CENTER", 0, 0)
   if UnitIsDeadOrGhost("player") then
     root:Hide()
     return
   end
 
-  local ok, situation = pcall(function()
-    return UnitThreatSituation("player")
+  local situation
+  pcall(function()
+    if UnitExists("target") then
+      local okAtk, atk = pcall(UnitCanAttack, "player", "target")
+      if okAtk and atk then
+        situation = UnitThreatSituation("player", "target")
+      end
+    end
+    if situation == nil then
+      situation = UnitThreatSituation("player")
+    end
   end)
-  if not ok or situation == nil then
-    root:Hide()
-    return
-  end
-  local sn = situation
-  if type(sn) ~= "number" or sn <= 0 then
-    root:Hide()
+  local sn = (type(situation) == "number") and situation or 0
+
+  local uac = UnitAffectingCombat and UnitAffectingCombat("player")
+
+  if sn > 0 then
+    local r, g, b = ThreatRgbForSituation(sn)
+    local a = 0.55 + sn * 0.12
+    if sn == 3 then a = a + 0.1 end
+    a = math.min(0.95, a)
+    tex:SetVertexColor(r, g, b, a)
+    root:Show()
     return
   end
 
-  local r, g, b = ThreatRgbForSituation(sn)
-  local a = 0.55 + sn * 0.12
-  if sn == 3 then a = a + 0.1 end
-  a = math.min(0.95, a)
-  tex:SetVertexColor(r, g, b, a)
-  root:Show()
+  --- Threat can be nil/0 while out of range or before the table updates; still in combat with something.
+  if uac then
+    tex:SetVertexColor(0.92, 0.52, 0.16, 0.44)
+    root:Show()
+    return
+  end
+
+  root:Hide()
 end

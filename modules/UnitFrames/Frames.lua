@@ -7,6 +7,9 @@ local INSET_POWER_H = 5
 local INSET_POWER_NARROWER = 20
 local POWER_GAP = 4
 local BOTTOM_PAD = 8
+--- Text along the top of the health bar: bottom edge vs health TOP* (negative Y = lower / more overlap on fill).
+local HEALTH_TOP_EDGE_TEXT_Y = -4
+local HEALTH_TOP_EDGE_GROUP_Y = HEALTH_TOP_EDGE_TEXT_Y - 2
 
 --- Width of inset power bar vs current health bar (call after health has width).
 function UF.SyncInsetPowerBarWidth(f)
@@ -65,6 +68,11 @@ function UF.ApplyUnitFrameChildLevels(f)
       f._playerLowHealthChrome:SetFrameLevel(f.health:GetFrameLevel() + 1)
     end)
   end
+  --- Buff/debuff/timer rows must stay above name text & bars so their tooltips win; re-sync if frame level changes.
+  local az = z + 200
+  if f.auraDebuffHost and f.auraDebuffHost.SetFrameLevel then f.auraDebuffHost:SetFrameLevel(az) end
+  if f.auraBuffHost and f.auraBuffHost.SetFrameLevel then f.auraBuffHost:SetFrameLevel(az) end
+  if f.auraTimerBarHost and f.auraTimerBarHost.SetFrameLevel then f.auraTimerBarHost:SetFrameLevel(az) end
 end
 
 local function EnsureBlizzardRetryFrame()
@@ -158,8 +166,7 @@ local function BuildPlayerResting(f)
   local zParent = f.healthTextLayer or f
   local zSmall = (ns.Fonts and ns.Fonts.CreateFontString(zParent, "OVERLAY", "GameFontHighlightSmall", "unit")) or zParent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   -- BOTTOMLEFT→health TOPLEFT: here, positive Y shifts the row *up* above the bar; use negative Y to sit lower so zzz overlaps the top edge of the fill.
-  local restingZOverlapY = -4
-  zSmall:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, restingZOverlapY)
+  zSmall:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, HEALTH_TOP_EDGE_TEXT_Y)
   zSmall:SetText("z")
   zSmall:SetTextColor(1, 0.88, 0.35)
   zSmall:SetShadowOffset(1, -1)
@@ -270,10 +277,11 @@ local function RegisterEvents(frame, unit)
       or event == "UPDATE_EXHAUSTION"
       or event == "PLAYER_REGEN_DISABLED"
       or event == "PLAYER_REGEN_ENABLED" then
-      if self.unit == "player" then UF.UpdatePlayerResting(self) end
+      --- Full refresh: resting + threat/aggro mask (REGEN alone used to skip UpdateThreatGlow until next OnUpdate).
+      if self.unit == "player" then UF.UpdateUnitFrame(self) end
       return
     end
-    if event == "PLAYER_ENTERING_WORLD" then
+    if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
       UF.UpdateUnitFrame(self)
       return
     end
@@ -292,6 +300,7 @@ local function RegisterEvents(frame, unit)
     frame:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
     frame:RegisterUnitEvent("UNIT_NAME_UPDATE", "player")
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    frame:RegisterEvent("GROUP_ROSTER_UPDATE")
     frame:RegisterEvent("PLAYER_UPDATE_RESTING")
     frame:RegisterEvent("UPDATE_EXHAUSTION")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -446,6 +455,23 @@ local function MakeUnitFrame(key, unit, defaultPoint)
 
   if unit == "player" then
     BuildPlayerResting(f)
+    do
+      local zParent = f.healthTextLayer or f
+      -- Slightly larger than health row + outline (via Fonts.lua) so G# reads clearly on the bar edge.
+      local gInd = (ns.Fonts and ns.Fonts.CreateFontString(zParent, "OVERLAY", "GameFontHighlight", "unit")) or zParent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+      gInd._flexxFontExtraSize = 1
+      gInd._flexxFontOutline = true
+      -- Slightly below the zzz row so the larger outlined G# sits on the bar edge cleanly.
+      gInd:SetPoint("BOTTOMRIGHT", f.health, "TOPRIGHT", -6, HEALTH_TOP_EDGE_GROUP_Y)
+      gInd:SetJustifyH("RIGHT")
+      gInd:SetTextColor(1, 0.94, 0.78)
+      -- Outline provides the edge; drop shadow would stack ugly on top.
+      gInd:SetShadowOffset(0, 0)
+      gInd:SetShadowColor(0, 0, 0, 0)
+      pcall(function() gInd:SetDrawLayer("OVERLAY", 9) end)
+      gInd:Hide()
+      f.groupIndicator = gInd
+    end
     UF.RemoveFrameBorder(f)
     UF.RemoveStatusBarBorder(f.health)
     UF.RemovePowerBarBorder(f.power)
@@ -467,7 +493,13 @@ local function MakeUnitFrame(key, unit, defaultPoint)
     end
   end)
 
-  f:HookScript("OnEnter", UnitFrame_ShowTooltip)
+  f:HookScript("OnEnter", function(self)
+    --- Parent OnEnter can fire over the same pixels as aura rows and overwrite spell tooltips with the unit tip.
+    if UF.IsMouseOverAuraHosts and UF.IsMouseOverAuraHosts(self) then
+      return
+    end
+    UnitFrame_ShowTooltip(self)
+  end)
   f:HookScript("OnLeave", UnitFrame_HideTooltip)
 
   if ns.Movers and ns.Movers.MakeMovable then

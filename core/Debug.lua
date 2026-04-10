@@ -35,7 +35,7 @@ end
 local function IsEnabled()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
   if _G.FlexxUIDB.debugActionLogEnabled == nil then
-    _G.FlexxUIDB.debugActionLogEnabled = true
+    _G.FlexxUIDB.debugActionLogEnabled = false
   end
   return _G.FlexxUIDB.debugActionLogEnabled == true
 end

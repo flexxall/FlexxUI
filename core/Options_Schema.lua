@@ -1,13 +1,6 @@
 local _, ns = ...
 local O = ns.Options
 
-local function ArtFont(parent, templateName)
-  if ns.Fonts and ns.Fonts.CreateFontString then
-    return ns.Fonts.CreateFontString(parent, "ARTWORK", templateName, "all")
-  end
-  return parent:CreateFontString(nil, "ARTWORK", templateName)
-end
-
 local function registerControl(ctrl)
   if ctrl and ctrl.Refresh then
     table.insert(O.state.controls, ctrl)
@@ -17,7 +10,7 @@ end
 local function makeNote(parent, text, width)
   local row = CreateFrame("Frame", nil, parent)
   row:SetSize(width or 640, 1)
-  local fs = ArtFont(row, "GameFontHighlightSmall")
+  local fs = O.ArtFont(row, "GameFontHighlightSmall")
   fs:SetPoint("TOPLEFT", 0, 0)
   fs:SetWidth(width or 640)
   fs:SetJustifyH("LEFT")
@@ -206,13 +199,13 @@ function O.BuildSchemaPage(content, spec)
     end
     arrow:SetVertexColor(0.95, 0.78, 0.28)
 
-    local title = ArtFont(hdrBtn, "GameFontHighlight")
+    local title = O.ArtFont(hdrBtn, "GameFontHighlight")
     title:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
     title:SetText(def.title or "Section")
 
     local hint
     if def.hint and def.hint ~= "" then
-      hint = ArtFont(sec, "GameFontHighlightSmall")
+      hint = O.ArtFont(sec, "GameFontHighlightSmall")
       hint:SetPoint("TOPLEFT", hdrBtn, "BOTTOMLEFT", 0, -2)
       hint:SetPoint("TOPRIGHT", hdrBtn, "BOTTOMRIGHT", 0, -2)
       hint:SetJustifyH("LEFT")
@@ -300,7 +293,7 @@ function O.BuildSchemaPage(content, spec)
   end
 
   if indexFrame then
-    local idxTitle = ArtFont(indexFrame, "GameFontHighlightSmall")
+    local idxTitle = O.ArtFont(indexFrame, "GameFontHighlightSmall")
     idxTitle:SetPoint("TOPLEFT", 8, -8)
     idxTitle:SetText("Jump to section")
     local y = -28

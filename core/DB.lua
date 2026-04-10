@@ -54,10 +54,12 @@ ns.DB.Defaults = {
   optionsDevSubTab = "cast",
   optionsCombatSubTab = "overview",
   optionsShowAdvanced = false,
+  debugActionLogEnabled = false,
+  debugActionMonitorShown = false,
   optionsCollapsed = {},
   combatCenter = {
-    enabled = false,
-    onlyInCombat = true,
+    enabled = true,
+    onlyInCombat = false,
     lockFrame = false,
     --- Screen offset from UIParent center (px). Negative Y moves the block down.
     anchorX = 0,
@@ -86,6 +88,8 @@ ns.DB.Defaults = {
   unitFrameAuraDevPreviewBuff = false,
   unitFrameAuraDevPreviewDebuff = false,
   unitFrameAuraDevPreviewBars = false,
+  --- Dev Settings: show raid-style group label (G1) on player frame while solo for layout testing.
+  devGroupIndicatorShowSolo = false,
 }
 
 local function DeepCopy(src)

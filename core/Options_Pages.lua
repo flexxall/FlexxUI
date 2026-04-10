@@ -1,13 +1,6 @@
 local _, ns = ...
 local O = ns.Options
 
-local function ArtFont(parent, templateName)
-  if ns.Fonts and ns.Fonts.CreateFontString then
-    return ns.Fonts.CreateFontString(parent, "ARTWORK", templateName, "all")
-  end
-  return parent:CreateFontString(nil, "ARTWORK", templateName)
-end
-
 --[[ Options UI copy (find / tweak quickly):
   hdr*   — section titles
   lbl*   — labels for the control directly below
@@ -44,7 +37,7 @@ local PLAYER_SUBTAB_HEIGHT = { health = 980, power = 1920, classbar = 360, auras
 
 local function addResourceBarLayoutSection(parent, below, gap)
   gap = gap or 16
-  local hdr = ArtFont(parent, "GameFontHighlight")
+  local hdr = O.ArtFont(parent, "GameFontHighlight")
   hdr:SetPoint("TOPLEFT", below, "BOTTOMLEFT", 0, -gap)
   hdr:SetText("Text on bar")
 
@@ -57,7 +50,7 @@ local function addResourceBarLayoutSection(parent, below, gap)
   cbPowerShow:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -10)
   table.insert(O.state.controls, cbPowerShow)
 
-  local lblFmt = ArtFont(parent, "GameFontHighlightSmall")
+  local lblFmt = O.ArtFont(parent, "GameFontHighlightSmall")
   lblFmt:SetPoint("TOPLEFT", cbPowerShow, "BOTTOMLEFT", 0, -10)
   lblFmt:SetText("Number")
 
@@ -77,7 +70,7 @@ local function addResourceBarLayoutSection(parent, below, gap)
   rbPowerVal:SetPoint("TOPLEFT", rbPowerPct, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbPowerVal)
 
-  local posHdr = ArtFont(parent, "GameFontHighlightSmall")
+  local posHdr = O.ArtFont(parent, "GameFontHighlightSmall")
   posHdr:SetPoint("TOPLEFT", rbPowerVal, "BOTTOMLEFT", 0, -14)
   posHdr:SetText("Align")
 
@@ -133,7 +126,7 @@ local function addResourceBarColorSection(parent, belowHdr, gap)
   cbSplit:SetPoint("TOPLEFT", belowHdr, "BOTTOMLEFT", 0, -gap)
   table.insert(O.state.controls, cbSplit)
 
-  local lblUniform = ArtFont(parent, "GameFontHighlightSmall")
+  local lblUniform = O.ArtFont(parent, "GameFontHighlightSmall")
   lblUniform:SetPoint("TOPLEFT", cbSplit, "BOTTOMLEFT", 0, -10)
   lblUniform:SetText("All resources")
 
@@ -153,7 +146,7 @@ local function addResourceBarColorSection(parent, belowHdr, gap)
   rbPCIce:SetPoint("TOPLEFT", rbPCAmber, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbPCIce)
 
-  local lblMana = ArtFont(parent, "GameFontHighlightSmall")
+  local lblMana = O.ArtFont(parent, "GameFontHighlightSmall")
   lblMana:SetPoint("TOPLEFT", rbPCIce, "BOTTOMLEFT", 0, -12)
   lblMana:SetText("Mana")
 
@@ -193,7 +186,7 @@ local function addResourceBarColorSection(parent, belowHdr, gap)
   rbMIce:SetPoint("TOPLEFT", rbMAmber, "BOTTOMLEFT", 0, -8)
   table.insert(O.state.controls, rbMIce)
 
-  local lblOther = ArtFont(parent, "GameFontHighlightSmall")
+  local lblOther = O.ArtFont(parent, "GameFontHighlightSmall")
   lblOther:SetPoint("TOPLEFT", rbMIce, "BOTTOMLEFT", 0, -12)
   lblOther:SetText("Other (energy, rage, focus, …)")
 
@@ -519,10 +512,23 @@ function O.BuildDevPage(content, mode)
   end
   table.insert(sections, {
     title = "Unit frame panel",
-    hint = "Developer-only visibility toggle for frame backdrop.",
+    hint = "Developer-only visibility toggles for frame backdrop and the group indicator.",
     collapsedKey = "dev_unitframe_panel",
     controls = {
       { type = "toggle", label = "Show unit frame panel background", width = 320, get = function() return _G.FlexxUIDB.unitFrameBackdropShow ~= false end, set = function(v) _G.FlexxUIDB.unitFrameBackdropShow = v; if ns.UnitFrames and ns.UnitFrames.SetUnitFrameBackdropShow then ns.UnitFrames.SetUnitFrameBackdropShow(v) end end },
+      {
+        type = "toggle",
+        label = "Show group indicator while solo (test)",
+        width = 320,
+        get = function() return _G.FlexxUIDB.devGroupIndicatorShowSolo == true end,
+        set = function(v)
+          _G.FlexxUIDB.devGroupIndicatorShowSolo = v and true or false
+          local UF = ns.UnitFrames
+          if UF and UF.UpdateUnitFrame and UF.state and UF.state.frames and UF.state.frames.player then
+            UF.UpdateUnitFrame(UF.state.frames.player)
+          end
+        end,
+      },
     },
   })
   table.insert(sections, {
@@ -615,7 +621,7 @@ function O.BuildCombatPage(content, mode)
     sections = {
       {
         title = "Overview",
-        hint = "Core behavior for the center cooldown manager frame.",
+        hint = "The resource lane (e.g. DK runic power) lives on this frame. If you see nothing, turn on \"Enable combat center manager\" below and, if needed, turn off \"Show only in combat\" so it is visible while idle.",
         collapsedKey = "combat_overview",
         controls = {
           {
@@ -1049,7 +1055,7 @@ function O.BuildUnitPetPage(content)
   O.StyleSurface(card, 0.80)
   card:SetBackdropColor(0.11, 0.13, 0.17, 0.78)
   card:SetBackdropBorderColor(0, 0, 0, 0)
-  local hintPet = ArtFont(card, "GameFontHighlightSmall")
+  local hintPet = O.ArtFont(card, "GameFontHighlightSmall")
   hintPet:SetPoint("TOPLEFT", 14, -14)
   hintPet:SetWidth(640)
   hintPet:SetJustifyH("LEFT")

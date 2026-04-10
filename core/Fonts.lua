@@ -117,6 +117,12 @@ local function applyToBucket(bucket, presetKey, scale)
           pcall(function() fs:SetFont(preset.file, sz, "") end)
         end
         applyFontExtraSize(fs)
+        if fs._flexxFontOutline then
+          local okO, pathO, sizeO = pcall(function() return fs:GetFont() end)
+          if okO and pathO and type(sizeO) == "number" then
+            pcall(function() fs:SetFont(pathO, sizeO, "OUTLINE") end)
+          end
+        end
       end
     end
   end

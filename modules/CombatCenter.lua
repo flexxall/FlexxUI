@@ -7,44 +7,51 @@ CC.state = CC.state or {
   frame = nil,
   lane1Wrap = nil,
   lane1Bg = nil,
+  lane1BgBottom = nil,
   lane1 = nil,
+  lane1Pips = {},
   lane2 = nil,
   lane3 = nil,
-  lane1Pips = {},
+  lane1Bar = nil,
   lane2Icons = {},
   lane3Icons = {},
   updater = nil,
-  --- Rotation lane: show GCD swipe only on the spell that triggered it (see ShouldSuppressGcdOnlySwipe).
   lastCastSpellId = nil,
   lastCastSpellName = nil,
   lastCastAt = nil,
+  --- spellID -> estimated end time for long CDs when GetSpellCooldown is GCD-masked.
+  rotationLongCdEnd = nil,
+  --- When true, REGEN_DISABLED has fired (definitely in combat). Cleared on REGEN_ENABLED; visibility still uses UnitAffectingCombat when this is nil.
+  regenCombatUi = nil,
 }
 
-local MAX_PIPS = 8
 local ICONS_LANE2 = 8
 local ICONS_LANE3 = 5
---- Pip row: height of each segment; gap between segments inside the pip bar.
-local PIP_H = 5
-local PIP_SEGMENT_GAP = 4
-local PIP_WRAP_PAD = 3
+--- Lane 1: pool resources use StatusBar; discrete (combo, holy power, …) use pip row.
+local LANE1_STATUS_H = 10
+local PIP_H = 6
+local MAX_PIPS = 8
+local PIP_SEGMENT_GAP = 3
+--- Max power above this uses the wide pool bar (runic, energy, …); at or below uses pips.
+local LANE1_POOL_MAX_THRESHOLD = 20
+--- Lane 1 wrap padding and gap before rotation row.
+local PIP_WRAP_PAD = 2
 local PIP_WRAP_BG_A = 0.34
---- Vertical gap between pip strip (wrapper bottom) and rotation row (lane2 top).
+--- Inset from pip row / pool bar edge to the outer lane1Bg (same on all sides).
+local PIP_BG_PAD = 2
+--- Hairline (1 px) along the bottom of the resource wrap, below pips / pool bar.
+local LANE1_BOTTOM_BG_H = 1
 local PIP_ROTATION_GAP = 2
---- Unfilled pip slots: flat translucent dark (no gradient).
-local PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B = 0.07, 0.07, 0.08
-local PIP_EMPTY_A = 0.42
---- Dark end of the active gradient (fraction of class RGB). Lower = stronger shading.
-local PIP_DARK_MULT = 0.82
---- Inner square must cover the pip rect when rotated (diagonal = sqrt(w²+h²)).
-local PIP_INNER_SCALE = 1.08
---- Added to atan2(PIP_H,segW)-π/2 (radians). Positive = more CCW in WoW SetRotation.
-local PIP_GRADIENT_ROT_BIAS = 0.12
---- Pip bar width as fraction of rotation row width (8 icons, edge-to-edge).
+--- StatusBar track (unfilled) tint.
+local PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B = 0.10, 0.11, 0.13
+local PIP_EMPTY_A = 0.58
+--- Resource bar width as fraction of rotation row width (8 icons, edge-to-edge).
 local PIP_BAR_WIDTH_FRAC = 0.8
 --- Bottom cooldown lane: ignore GCD and other short timers (API reports GCD on many spells at once).
 local LANE3_MIN_SPELL_CD_DURATION = 2.1
+--- Lane 2 merged duration above this counts as a real spell CD (vs GCD-only) for swipe logic.
+local ROTATION_LONG_CD_MIN_DURATION = 2.5
 local SpellCooldown
-local toPlainNumber
 local SpellIcon
 --- Cached player spellbook spell IDs (refreshed on SPELLS_CHANGED) so lane 3 can show CDs for spells not on the bar.
 local spellBookSpellIDs = {}
@@ -215,7 +222,19 @@ local function RefreshSpellBookSpellIDCache()
   end)
 end
 
---- Same merge as the default UI: bar slot timer vs spell timer (whichever has more time left).
+local function SpellRemainBeatsAction(sRemain, aRemain, sDuration, aDuration)
+  if CooldownPlainInactive(sDuration) then return false end
+  if sRemain ~= nil then
+    if aRemain == nil then return SafeNumberGt(sRemain, 0) end
+    return SafeNumberGt(sRemain, aRemain)
+  end
+  if CooldownPlainInactive(aDuration) then return true end
+  local ok, pick = pcall(function()
+    return type(sDuration) == "number" and type(aDuration) == "number" and sDuration > aDuration + 0.01
+  end)
+  return ok and pick
+end
+
 local function MergeActionAndSpellCooldown(spellID, slot)
   local now = GetTime and GetTime() or 0
   local aStart, aDuration, aEnabled, aModRate = ActionCooldown(slot)
@@ -225,7 +244,7 @@ local function MergeActionAndSpellCooldown(spellID, slot)
   local startTime, duration, enabled, modRate = aStart, aDuration, aEnabled, aModRate
   local pickSpell = false
   pcall(function()
-    pickSpell = (sRemain > aRemain) and (not CooldownPlainInactive(sDuration))
+    pickSpell = SpellRemainBeatsAction(sRemain, aRemain, sDuration, aDuration)
   end)
   if pickSpell then
     startTime, duration, enabled, modRate = sStart, sDuration, sEnabled, sModRate
@@ -233,18 +252,9 @@ local function MergeActionAndSpellCooldown(spellID, slot)
   return startTime, duration, enabled, modRate
 end
 
---- First icon row below the pips ("rotation" lane): match the default **action button** on that slot, then merge/spell.
---- Using merge-only here often hid swipes because spell vs action timers disagreed.
 local function CooldownForRotationIcon(spellID, slot)
   if not spellID or not slot then
     return SpellCooldown(spellID)
-  end
-  local aStart, aDuration, aEnabled, aModRate = ActionCooldown(slot)
-  local now = GetTime and GetTime() or 0
-  local aRemain = CooldownRemain(aStart, aDuration, now)
-  --- Prefer slot timing whenever the button reports an active timer (GCD or spell CD), even if remain is secret.
-  if (not CooldownPlainInactive(aDuration)) and (aRemain == nil or SafeNumberGt(aRemain, 0)) then
-    return aStart, aDuration, aEnabled, aModRate
   end
   return MergeActionAndSpellCooldown(spellID, slot)
 end
@@ -283,8 +293,6 @@ local function ApplyIconCooldownSwipe(cd, startTime, duration, modRate)
   end
 end
 
---- Retail (build ~66562+): numeric SetCooldown no longer drives the swipe for secret cooldowns.
---- Match LibActionButton: Cooldown:SetCooldownFromDurationObject + C_ActionBar / C_Spell duration APIs.
 local function ClearLaneCooldownVisual(cd)
   if not cd then return end
   pcall(function()
@@ -297,7 +305,6 @@ local function ClearLaneCooldownVisual(cd)
   end)
 end
 
---- Seconds for overlay text when legacy GetSpellCooldown still returns numbers (optional).
 local function LegacyRemainSeconds(spellID)
   if not spellID or not GetSpellCooldown then return nil end
   local ok, s, d = pcall(GetSpellCooldown, spellID)
@@ -326,13 +333,12 @@ local function GetGcdRemain(now)
   return nil
 end
 
---- Whether the slot or spell reports an active cooldown (secret-safe fields when present).
+--- Slot/spell on cooldown; checks action, C_Spell, then merged legacy (do not trust isActive==false alone).
 local function CooldownApiActive(spellID, actionSlot, legacyDuration)
   if actionSlot and C_ActionBar and C_ActionBar.GetActionCooldown then
     local ok, info = pcall(C_ActionBar.GetActionCooldown, actionSlot)
     if ok and type(info) == "table" then
       if info.isActive == true then return true end
-      if info.isActive == false then return false end
       if not CooldownPlainInactive(info.duration) then return true end
     end
   end
@@ -340,13 +346,13 @@ local function CooldownApiActive(spellID, actionSlot, legacyDuration)
     local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
     if ok and type(info) == "table" then
       if info.isActive == true then return true end
-      if info.isActive == false then return false end
       if not CooldownPlainInactive(info.duration) then return true end
     end
   end
   return not CooldownPlainInactive(legacyDuration)
 end
 
+--- Uses SetCooldownFromDurationObject when supported (Retail secret cooldowns).
 local function ApplyCooldownToIcon(cd, spellID, actionSlot, startTime, duration, modRate)
   if not cd then return end
   if cd.SetCooldownFromDurationObject then
@@ -540,39 +546,7 @@ local function BuildLiveLaneSpellLists()
   return rotation, cooldowns
 end
 
---- GetSpellCooldown / C_Spell may return secret numbers; never return them (no arithmetic/compare on secrets).
-toPlainNumber = function(v)
-  if v == nil then return 0 end
-  local function coerce(x)
-    if x == nil then return 0 end
-    local ok, n = pcall(function()
-      return tonumber(string.format("%.10f", x))
-    end)
-    if ok and type(n) == "number" and n == n then return n end
-    ok, n = pcall(function()
-      return tonumber(tostring(x))
-    end)
-    if ok and type(n) == "number" and n == n then return n end
-    return 0
-  end
-  if type(v) == "number" then
-    return coerce(v)
-  end
-  local ok, s = pcall(string.format, "%.10f", v)
-  if ok and s then
-    local n = tonumber(s)
-    if n and n == n then return n end
-  end
-  ok, s = pcall(tostring, v)
-  if ok and s then
-    local n = tonumber(s)
-    if n and n == n then return n end
-  end
-  return 0
-end
-
---- Raw start/duration/modRate for Cooldown:SetCooldown (Retail secret values must not pass through toPlainNumber).
---- If C_Spell reports no active duration, fall back to GetSpellCooldown.
+--- Raw start/duration/modRate for Cooldown:SetCooldown (Retail may use secret values; keep them in pcall paths).
 SpellCooldown = function(spellID)
   if not spellID then return 0, 0, true, 1 end
   if C_Spell and C_Spell.GetSpellCooldown then
@@ -682,25 +656,62 @@ local function LastCastIsInRotationRow(lastId, rotSet)
   return false
 end
 
---- Spell has cooldown remaining clearly longer than the GCD sweep (own CD, not gcd-only on that icon).
+local function UpdateRotationLongCdEndCache(spellID, startTime, duration, onCd, now, remainCd)
+  if not spellID then return end
+  local ends = CC.state.rotationLongCdEnd
+  if not ends then
+    ends = {}
+    CC.state.rotationLongCdEnd = ends
+  end
+  if ends[spellID] and now >= ends[spellID] then
+    ends[spellID] = nil
+  end
+  if not onCd then
+    ends[spellID] = nil
+    return
+  end
+  pcall(function()
+    if type(duration) == "number" and duration > LANE3_MIN_SPELL_CD_DURATION and type(startTime) == "number" then
+      ends[spellID] = startTime + duration
+      return
+    end
+  end)
+  if ends[spellID] then return end
+  pcall(function()
+    if type(remainCd) == "number" and remainCd > LANE3_MIN_SPELL_CD_DURATION + 0.2 then
+      ends[spellID] = now + remainCd
+    end
+  end)
+end
+
 local function SpellHasMeaningfulCooldownBeyondGcd(spellID, gcdRemain, now)
   if not spellID or not gcdRemain then return false end
+  local ends = CC.state.rotationLongCdEnd
+  if ends then
+    local tEnd = ends[spellID]
+    if tEnd and now < tEnd - 0.05 then
+      return true
+    end
+  end
   local sStart, sDur = SpellCooldown(spellID)
   local sRem = CooldownRemain(sStart, sDur, now)
+  if sRem == nil and GetSpellCooldown then
+    local ok, s, d = pcall(GetSpellCooldown, spellID)
+    if ok and type(s) == "number" and type(d) == "number" and d > 0 then
+      sRem = math.max(0, s + d - now)
+    end
+  end
   if sRem ~= nil then
     return SafeNumberGt(sRem, gcdRemain + 0.12)
   end
-  if GetSpellCooldown then
-    local ok, s, d = pcall(GetSpellCooldown, spellID)
-    if ok and type(s) == "number" and type(d) == "number" and d > 0 then
-      local rem = math.max(0, s + d - now)
-      return SafeNumberGt(rem, gcdRemain + 0.12)
-    end
+  local leg = LegacyRemainSeconds(spellID)
+  if leg ~= nil then
+    return SafeNumberGt(leg, gcdRemain + 0.12)
   end
   return false
 end
 
---- Rotation lane: show GCD swipe only on the spell you just cast. (Old slotRemain≈gcdRemain failed with secret values.)
+--- True when this icon should skip applying a fresh cooldown swipe (non-caster during a recent rotation GCD).
 local function ShouldSuppressGcdOnlySwipe(spellID, now)
   now = now or (GetTime and GetTime() or 0)
   local lastId = CC.state.lastCastSpellId
@@ -735,33 +746,60 @@ local function ShouldSuppressGcdOnlySwipe(spellID, now)
   return true
 end
 
-local function SpellChargeDisplay(spellID)
-  if not spellID then return nil, nil end
-  if C_Spell and C_Spell.GetSpellCharges then
-    local ok, info = pcall(C_Spell.GetSpellCharges, spellID)
-    if ok and type(info) == "table" then
-      local isMulti, cur, mx = false, nil, nil
-      pcall(function()
-        local m = info.maxCharges
-        if m == nil then return end
-        if m > 1 then
-          isMulti = true
-          cur, mx = info.currentCharges, m
-        end
-      end)
-      if isMulti then return cur, mx end
+--- Normalize SpellChargeInfo / GetActionCharges table (Retail field names vary; bar slot is authoritative for lane 2).
+local function ParseChargePairFromTable(info)
+  if type(info) ~= "table" then return nil, nil end
+  local mx = info.maxCharges or info.max
+  if type(mx) ~= "number" or not SafeNumberGt(mx, 1) then return nil, nil end
+  local cur = info.currentCharges
+  if cur == nil then cur = info.charges end
+  if cur == nil then cur = info.current end
+  if type(cur) ~= "number" then cur = nil end
+  return cur, mx
+end
+
+--- Prefer action-slot charge APIs (same as the default action button). Spell-id-only APIs often mismatch bar IDs (e.g. DK Empower Rune Weapon).
+local function SpellChargeDisplay(spellID, actionSlot)
+  if actionSlot then
+    if C_ActionBar and C_ActionBar.GetActionCharges then
+      local ok, info = pcall(C_ActionBar.GetActionCharges, actionSlot)
+      if ok and type(info) == "table" then
+        local cur, mx = ParseChargePairFromTable(info)
+        if mx then return cur, mx end
+      end
+    end
+    if GetActionCharges then
+      local ok, cur, maxC = pcall(GetActionCharges, actionSlot)
+      if ok and type(maxC) == "number" and SafeNumberGt(maxC, 1) then
+        if type(cur) == "number" then return cur, maxC end
+        return nil, maxC
+      end
     end
   end
-  if GetSpellCharges then
-    local ok, cur, maxC = pcall(GetSpellCharges, spellID)
-    if ok then
-      local isMulti = false
-      pcall(function()
-        if maxC == nil then return end
-        if maxC > 1 then isMulti = true end
-      end)
-      if isMulti then return cur, maxC end
+
+  local function fromSpellId(sid)
+    if not sid then return nil, nil end
+    if C_Spell and C_Spell.GetSpellCharges then
+      local ok, info = pcall(C_Spell.GetSpellCharges, sid)
+      if ok and type(info) == "table" then
+        local cur, mx = ParseChargePairFromTable(info)
+        if mx then return cur, mx end
+      end
     end
+    if GetSpellCharges then
+      local ok, cur, maxC = pcall(GetSpellCharges, sid)
+      if ok and type(maxC) == "number" and SafeNumberGt(maxC, 1) then
+        return type(cur) == "number" and cur or nil, maxC
+      end
+    end
+    return nil, nil
+  end
+
+  local cur, mx = fromSpellId(spellID)
+  if mx then return cur, mx end
+  local base = GetBaseSpellIdSafe(spellID)
+  if base and base ~= spellID then
+    return fromSpellId(base)
   end
   return nil, nil
 end
@@ -814,62 +852,35 @@ local function NewIcon(parent)
   return f
 end
 
+local function PlayerInCombatForUi()
+  --- No target: treat as not in combat for the panel. UAC/REGEN often lag behind clearing target; long CDs then "lock" the panel on.
+  if not UnitExists("target") then
+    return false
+  end
+  --- REGEN_DISABLED sets true. Storing false on REGEN_ENABLED made every later check skip UnitAffectingCombat until REGEN fired again (bad for auto-attack entries that lag REGEN).
+  if CC.state.regenCombatUi == true then
+    return true
+  end
+  if UnitAffectingCombat and UnitAffectingCombat("player") then
+    return true
+  end
+  --- Mirrors default UI “regen disabled” / combat in edge cases where UAC lags (e.g. at range).
+  if PlayerRegenEnabled and not PlayerRegenEnabled() then
+    return true
+  end
+  return false
+end
+
 local function UpdateVisibility()
   local db = DB()
   local f = CC.state.frame
   if not f then return end
   if not db.enabled then f:Hide(); return end
-  if db.onlyInCombat and not UnitAffectingCombat("player") then
+  if db.onlyInCombat and not PlayerInCombatForUi() then
     f:Hide()
     return
   end
   f:Show()
-end
-
-local function ApplyPipInactiveFlat(tex)
-  tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-  if tex.SetRotation then
-    pcall(function()
-      tex:SetRotation(0)
-    end)
-  end
-  tex:SetVertexColor(PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B, PIP_EMPTY_A)
-end
-
---- VERTICAL: bottom = class, top = darker. Rotation maps texture +Y (dark) toward holder top-right; + class at bottom-left.
-local function ApplyPipActiveGradient(tex, r, g, b, rotRad)
-  tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-  tex:SetVertexColor(1, 1, 1, 1)
-  if tex.SetRotation then
-    pcall(function()
-      tex:SetRotation(0)
-    end)
-  end
-  local dm = PIP_DARK_MULT
-  local lr, lg, lb = r, g, b
-  local dr, dg, db = r * dm, g * dm, b * dm
-  local a = 1
-  local ok = false
-  if CreateColor and tex.SetGradient then
-    ok = pcall(function()
-      tex:SetGradient("VERTICAL", CreateColor(lr, lg, lb, a), CreateColor(dr, dg, db, a))
-    end)
-  end
-  if not ok then
-    tex:SetVertexColor((lr + dr) * 0.5, (lg + dg) * 0.5, (lb + db) * 0.5, a)
-    return
-  end
-  if tex.SetRotation then
-    local rad = rotRad
-    local okRot = pcall(function()
-      tex:SetRotation(rad, { x = 0.5, y = 0.5 })
-    end)
-    if not okRot then
-      pcall(function()
-        tex:SetRotation(rad)
-      end)
-    end
-  end
 end
 
 local function SecondaryPowerTypeColor(pt)
@@ -881,6 +892,16 @@ local function SecondaryPowerTypeColor(pt)
     if pt == E.SoulShards then return 0.60, 0.32, 0.95 end
     if pt == E.ArcaneCharges then return 0.82, 0.44, 0.95 end
     if pt == E.Essence then return 0.32, 0.78, 0.98 end
+    if pt == E.RunicPower then return 0.00, 0.82, 1.00 end
+    --- DK runes (lane 1): same spec accents as player Runic Power bar (Frost cyan / Unholy green / Blood red).
+    if pt == E.Runes then
+      local UFw = ns.UnitFrames
+      if UFw and UFw.GetDeathKnightSpecResourceRGB then
+        local r, g, b = UFw.GetDeathKnightSpecResourceRGB("player")
+        if r then return r, g, b end
+      end
+      return 0.78, 0.16, 0.22
+    end
   end
   local pbc = PowerBarColor and PowerBarColor[pt]
   if pbc then
@@ -892,12 +913,165 @@ local function SecondaryPowerTypeColor(pt)
   return 0.95, 0.85, 0.35
 end
 
-local function RepositionPips(n, filled, pt)
+--- True when Enum/table power types refer to the same resource (e.g. RunicPower vs index 6).
+local function PowerTypesMatch(a, b)
+  if a == nil or b == nil then return false end
+  if a == b then return true end
+  local na, nb
+  pcall(function() na = a + 0 end)
+  pcall(function() nb = b + 0 end)
+  if type(na) == "number" and type(nb) == "number" and na == nb then return true end
+  return false
+end
+
+local function Lane1UsePoolBar(mx, pt)
+  local ok = false
+  pcall(function()
+    ok = type(mx) == "number" and mx > LANE1_POOL_MAX_THRESHOLD
+  end)
+  if ok then return true end
+  local E = Enum and Enum.PowerType
+  if E and E.RunicPower ~= nil and pt == E.RunicPower then return true end
+  pcall(function()
+    if type(pt) == "number" and pt == 6 then ok = true end
+  end)
+  return ok
+end
+
+--- Class/spec-aware lane 1: same selection as unit-frame top pips (SecondaryResource), then primary power bar.
+--- For pool resources that are also the primary power bar (DK runic, warrior rage, …), use the same tuple as UF.UpdatePowerBar.
+---
+--- Death Knight: UnitPowerType reports Runic Power first, but rotation is driven by Runes (Enum.PowerType.Runes, 0–6
+--- available charges that deplete). Runic Power is the inverse meter (fills when you spend runes). Lane 1 uses Runes
+--- so the strip matches Frost/Blood/Unholy “how many runes are up” playstyle.
+---
+--- Retail: UnitPower(Runes) does not reliably mirror per-rune spend/regen; use GetRuneCooldown (same as stock rune UI).
+local DK_RUNE_COUNT = 6
+
+local function CountDeathKnightRunesReady()
+  if not GetRuneCooldown then return nil end
+  local n = 0
+  local ok = pcall(function()
+    for i = 1, DK_RUNE_COUNT do
+      local start, duration, runeReady = GetRuneCooldown(i)
+      --- Third return is boolean on most clients; some builds use 1/0.
+      if runeReady == true or runeReady == 1 then
+        n = n + 1
+      elseif runeReady == false or runeReady == 0 then
+        --- On cooldown.
+      else
+        --- Some builds omit the third return; treat as ready only when no CD is active.
+        local d = duration
+        local s = start
+        if type(d) == "number" and type(s) == "number" and d <= 0 and s <= 0 then
+          n = n + 1
+        end
+      end
+    end
+  end)
+  if not ok then return nil end
+  return n
+end
+
+--- 0 = just depleted, 1 = ready; mid values = recharge progress (elapsed / cooldown duration).
+local function GetRuneRechargeProgress(runeIndex)
+  if not GetRuneCooldown then return 1 end
+  local start, duration, runeReady = GetRuneCooldown(runeIndex)
+  if runeReady == true or runeReady == 1 then
+    return 1
+  end
+  local dur = type(duration) == "number" and duration or 0
+  local st = type(start) == "number" and start or 0
+  if dur > 0 then
+    local now = GetTime()
+    local elapsed = now - st
+    if elapsed < 0 then elapsed = 0 end
+    return math.max(0, math.min(1, elapsed / dur))
+  end
+  if runeReady == false or runeReady == 0 then
+    return 0
+  end
+  if st <= 0 and dur <= 0 then
+    return 1
+  end
+  return 0
+end
+
+local function ReadPlayerPowerForLane1()
+  local unit = "player"
+  if not UnitExists(unit) then return nil, 0, 0 end
+  local UFw = ns.UnitFrames
+  if not UFw then return nil, 0, 0 end
+
+  local classId = select(3, UnitClass(unit))
+  if type(classId) == "number" and classId == 6 then
+    local E = Enum and Enum.PowerType
+    local runePt = E and E.Runes
+    if runePt ~= nil then
+      local ready = CountDeathKnightRunesReady()
+      if ready ~= nil then
+        return runePt, UFw.CoerceAmount(ready), DK_RUNE_COUNT
+      end
+      --- Fallback if GetRuneCooldown unavailable (should be rare).
+      local cur, mx = 0, 0
+      local okRead = pcall(function()
+        mx = UnitPowerMax(unit, runePt) + 0
+        cur = (UnitPower(unit, runePt) or 0) + 0
+      end)
+      local good = false
+      pcall(function()
+        good = okRead and type(mx) == "number" and mx == mx and mx > 0
+      end)
+      if good then
+        return runePt, UFw.CoerceAmount(cur), UFw.CoerceAmount(mx)
+      end
+    end
+  end
+
+  local pt, pc, pm = nil, 0, 0
+
+  if UFw.GetSecondaryPowerValues then
+    local spt, cur, mx = UFw.GetSecondaryPowerValues(unit)
+    if spt ~= nil then
+      local c = UFw.CoerceAmount(cur)
+      local m = UFw.CoerceAmount(mx)
+      local use = false
+      pcall(function()
+        use = type(m) == "number" and m == m and m > 0
+      end)
+      if use then
+        pt, pc, pm = spt, c, m
+      end
+    end
+  end
+
+  if pt == nil and UFw.GetUnitPowerBarValues then
+    pt, pc, pm = UFw.GetUnitPowerBarValues(unit)
+  end
+
+  if pt == nil then return nil, 0, 0 end
+
+  --- Do not merge DK lane-1 Runes with primary power bar; types differ (Runes vs Runic Power).
+  local E = Enum and Enum.PowerType
+  local isDkRunes = E and pt == E.Runes
+  if UFw.GetUnitPowerBarValues and Lane1UsePoolBar(pm, pt) and not isDkRunes then
+    local p2, c2, m2 = UFw.GetUnitPowerBarValues(unit)
+    if p2 ~= nil and PowerTypesMatch(pt, p2) then
+      local mc = UFw.CoerceAmount(m2)
+      if mc > 0 then
+        pt, pc, pm = p2, c2, m2
+      end
+    end
+  end
+
+  return pt, pc, pm
+end
+
+--- progressList: optional per-segment fill 0–1 (e.g. DK rune recharge).
+local function RepositionPips(n, filled, pt, barW, progressList)
   local lane = CC.state.lane1
   if not lane then return end
-  local barW = lane:GetWidth()
-  if not barW or barW <= 0 then return end
-  if n <= 0 then
+  if n <= 0 or barW <= 0 then
     for i = 1, MAX_PIPS do
       local slot = CC.state.lane1Pips[i]
       if slot and slot.holder then
@@ -906,36 +1080,63 @@ local function RepositionPips(n, filled, pt)
     end
     return
   end
+  local pipH = PIP_H
   local gap = PIP_SEGMENT_GAP
   local totalGap = (n - 1) * gap
-  local segW = (barW - totalGap) / n
-  if segW < 2 then segW = 2 end
+  --- Integer widths + cumulative X so every gap is exactly `gap` px (fractional math rounds badly mid-row).
+  local bw = math.max(1, math.floor(barW + 0.5))
+  local inner = bw - totalGap
+  if inner < n then inner = n end
+  local baseW = math.floor(inner / n)
+  local rem = inner - n * baseW
   local r, g, b = SecondaryPowerTypeColor(pt)
-  local laneH = lane:GetHeight() or (PIP_H + 2)
-  local y = math.max(0, (laneH - PIP_H) / 2)
+  local yPad = math.max(0, (lane:GetHeight() or pipH) - pipH) / 2
+  local x = 0
   for i = 1, MAX_PIPS do
     local slot = CC.state.lane1Pips[i]
-    if not slot or not slot.holder or not slot.tex then
-      -- Corrupt state; skip until reload recreates frames.
+    if not slot or not slot.holder then
     elseif i <= n then
-      local holder, tex = slot.holder, slot.tex
+      local holder = slot.holder
+      local bgTex = slot.bgTex or slot.tex
+      local fillTex = slot.fillTex or slot.tex
+      local wi = baseW + (i <= rem and 1 or 0)
       holder:Show()
-      holder:SetSize(segW, PIP_H)
+      holder:SetSize(wi, pipH)
       holder:ClearAllPoints()
-      holder:SetPoint("LEFT", lane, "LEFT", (i - 1) * (segW + gap), y)
-      if i <= filled then
-        local inner = math.max(PIP_H, math.sqrt(segW * segW + PIP_H * PIP_H) * PIP_INNER_SCALE)
-        tex:SetSize(inner, inner)
-        tex:ClearAllPoints()
-        tex:SetPoint("CENTER", holder, "CENTER", 0, 0)
-        -- Angle so unrotated +Y (dark end) aligns with direction center → top-right of segment.
-        local rotRad = math.atan2(PIP_H, segW) - (math.pi / 2) + PIP_GRADIENT_ROT_BIAS
-        ApplyPipActiveGradient(tex, r, g, b, rotRad)
+      holder:SetPoint("TOPLEFT", lane, "TOPLEFT", x, -yPad)
+      x = x + wi + gap
+      local p
+      if progressList and type(progressList[i]) == "number" then
+        p = progressList[i]
+        if p < 0 then p = 0 elseif p > 1 then p = 1 end
       else
-        tex:SetSize(segW, PIP_H)
-        tex:ClearAllPoints()
-        tex:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
-        ApplyPipInactiveFlat(tex)
+        p = (i <= filled) and 1 or 0
+      end
+      if bgTex and fillTex and bgTex ~= fillTex then
+        bgTex:SetAllPoints(holder)
+        bgTex:SetVertexColor(PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B, PIP_EMPTY_A)
+        local fw = wi * p
+        if p <= 0.001 then
+          fillTex:Hide()
+        else
+          fillTex:Show()
+          fillTex:ClearAllPoints()
+          fillTex:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+          fillTex:SetWidth(math.max(1, fw))
+          fillTex:SetHeight(pipH)
+          fillTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+          local a = 0.52 + 0.43 * p
+          fillTex:SetVertexColor(r, g, b, a)
+        end
+      else
+        --- Legacy single-texture pip (no fill layer).
+        fillTex:ClearAllPoints()
+        fillTex:SetAllPoints(holder)
+        if p >= 0.999 then
+          fillTex:SetVertexColor(r, g, b, 0.95)
+        else
+          fillTex:SetVertexColor(PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B, PIP_EMPTY_A)
+        end
       end
     else
       slot.holder:Hide()
@@ -945,28 +1146,138 @@ end
 
 local function UpdateLane1()
   local db = DB()
-  local lane = CC.state.lane1
   local wrap = CC.state.lane1Wrap
-  if not lane or not wrap then return end
+  local bar = CC.state.lane1Bar
+  local pipLane = CC.state.lane1
+  if not wrap then return end
+  local lane1Bg = CC.state.lane1Bg
   wrap:SetShown(db.showResourceLane ~= false)
-  if not wrap:IsShown() then return end
-
-  local pt, cur, mx = nil, 0, 0
-  if ns.UnitFrames and ns.UnitFrames.GetSecondaryPowerValues then
-    pt, cur, mx = ns.UnitFrames.GetSecondaryPowerValues("player")
-  end
-  if not pt or mx <= 0 then
-    for i = 1, MAX_PIPS do
-      local slot = CC.state.lane1Pips[i]
-      if slot and slot.holder then
-        slot.holder:Hide()
-      end
-    end
+  if not wrap:IsShown() then
+    CC.state.lane1FastTick = false
+    if bar then bar:Hide() end
+    if pipLane then pipLane:Hide() end
+    if lane1Bg then lane1Bg:Hide() end
+    if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
     return
   end
-  local n = math.min(MAX_PIPS, math.max(1, math.floor(mx + 0.5)))
-  local filled = math.min(n, math.max(0, math.floor(cur + 1e-3)))
-  RepositionPips(n, filled, pt)
+  if not bar or not bar.SetMinMaxValues then
+    if lane1Bg then lane1Bg:Hide() end
+    if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
+    return
+  end
+
+  local pt, pc, pm = ReadPlayerPowerForLane1()
+  local UFw = ns.UnitFrames
+  if UFw and UFw.CoerceAmount then
+    pc = UFw.CoerceAmount(pc)
+    pm = UFw.CoerceAmount(pm)
+  end
+  local valid = false
+  pcall(function()
+    valid = pt ~= nil and type(pm) == "number" and pm == pm and pm > 0
+  end)
+  if not valid then
+    CC.state.lane1FastTick = false
+    bar:Hide()
+    if pipLane then pipLane:Hide() end
+    if lane1Bg then lane1Bg:Hide() end
+    if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
+    return
+  end
+
+  local size = db.iconSize or 44
+  local rotationW = ICONS_LANE2 * size
+  local pipBarW = rotationW * PIP_BAR_WIDTH_FRAC
+  local wrapInner = math.max(0, (wrap:GetWidth() or 0) - (PIP_WRAP_PAD * 2))
+  local w = bar:GetWidth()
+  local h = bar:GetHeight()
+  if not w or w <= 0 then
+    w = (wrapInner > 0) and wrapInner or pipBarW
+  end
+  if not h or h <= 0 then
+    h = LANE1_STATUS_H
+  end
+  w = math.max(1, w or pipBarW)
+  local lane1InnerH = math.max(LANE1_STATUS_H, PIP_H)
+  bar:SetSize(w, LANE1_STATUS_H)
+  if pipLane then
+    --- Same height as Layout lane1 so pips can sit vertically centered in the strip (no wide bg wrapper).
+    pipLane:SetSize(w, lane1InnerH)
+  end
+
+  CC.state.lane1FastTick = false
+  local usePool = Lane1UsePoolBar(pm, pt)
+  if usePool then
+    if pipLane then pipLane:Hide() end
+    local r, g, b = SecondaryPowerTypeColor(pt)
+    --- Mirror UF.UpdatePowerBar: read by power type and use normalized values, else raw (secret-safe).
+    local unit = "player"
+    local maxP = UnitPowerMax(unit, pt)
+    local cur = UnitPower(unit, pt)
+    local okNorm, cNum, mNum = pcall(function()
+      local c = cur + 0
+      local m = maxP + 0
+      if m <= 0 then return nil, nil end
+      if c > m then c = m end
+      if c < 0 then c = 0 end
+      return c, m
+    end)
+    local setOk = false
+    if okNorm and cNum ~= nil and mNum ~= nil then
+      setOk = pcall(function()
+        bar:SetMinMaxValues(0, mNum)
+        bar:SetValue(cNum)
+        bar:SetStatusBarColor(r, g, b, 1)
+      end)
+    end
+    if not setOk then
+      pcall(function()
+        bar:SetMinMaxValues(0, maxP)
+        bar:SetValue(cur)
+      end)
+      pcall(function()
+        bar:SetStatusBarColor(r, g, b, 1)
+      end)
+    end
+    local st = bar:GetStatusBarTexture()
+    if st then st:SetAlpha(1) end
+    bar:Show()
+  else
+    bar:Hide()
+    if pipLane then
+      pipLane:Show()
+      local n = math.min(MAX_PIPS, math.max(1, math.floor(pm + 0.5)))
+      local filled = math.min(n, math.max(0, math.floor(pc + 0.5)))
+      local progressList
+      local E = Enum and Enum.PowerType
+      if E and pt == E.Runes and GetRuneCooldown then
+        progressList = {}
+        for i = 1, n do
+          progressList[i] = GetRuneRechargeProgress(i)
+        end
+      end
+      RepositionPips(n, filled, pt, w, progressList)
+      CC.state.lane1FastTick = progressList ~= nil
+    end
+  end
+
+  local yMainBg = math.floor(LANE1_BOTTOM_BG_H / 2)
+  if lane1Bg then
+    lane1Bg:ClearAllPoints()
+    lane1Bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+    lane1Bg:SetVertexColor(0, 0, 0, PIP_WRAP_BG_A)
+    local bgH = usePool and (LANE1_STATUS_H + 2 * PIP_BG_PAD) or (PIP_H + 2 * PIP_BG_PAD)
+    lane1Bg:SetSize(w + 2 * PIP_BG_PAD, bgH)
+    lane1Bg:SetPoint("CENTER", wrap, "CENTER", 0, yMainBg)
+    lane1Bg:Show()
+  end
+  local bgb = CC.state.lane1BgBottom
+  if bgb and bgb.ClearAllPoints then
+    bgb:ClearAllPoints()
+    bgb:SetSize(w + 2 * PIP_BG_PAD, LANE1_BOTTOM_BG_H)
+    bgb:SetPoint("BOTTOM", wrap, "BOTTOM", 0, PIP_WRAP_PAD)
+    bgb:Show()
+  end
 end
 
 local function UpdateLaneIcons(iconPool, spellList, laneShown, isRotationLane)
@@ -1004,30 +1315,45 @@ local function UpdateLaneIcons(iconPool, spellList, laneShown, isRotationLane)
         remainCd = LegacyRemainSeconds(spellID)
       end
       local onCd = CooldownApiActive(spellID, entry.actionSlot, duration)
+      if isRotationLane and spellID then
+        local ends = CC.state.rotationLongCdEnd
+        if not onCd and ends and ends[spellID] and now < ends[spellID] - 0.05 then
+          onCd = true
+        end
+        if not onCd and remainCd and SafeNumberGt(remainCd, 0.05) then
+          pcall(function()
+            if type(duration) == "number" and duration > LANE3_MIN_SPELL_CD_DURATION then
+              onCd = true
+            end
+          end)
+        end
+      end
+      if isRotationLane then
+        UpdateRotationLongCdEndCache(spellID, startTime, duration, onCd, now, remainCd)
+      end
       local suppressGcd = false
       if isRotationLane then
         suppressGcd = ShouldSuppressGcdOnlySwipe(spellID, now)
       end
-      if suppressGcd then
-        remainCd = nil
-      end
-      --- Re-apply on CD edge (false→true) always; else only when API tuple differs. Edge avoids secret-compare misses.
-      --- Duration-object path (Retail secret CDs) re-applies cheaply; legacy numeric still uses triple gate.
       local edgeOn = onCd and not (iconFrame._flexxWasOnCd or false)
       iconFrame._flexxWasOnCd = onCd
       local useDurationObject = iconFrame.cd and iconFrame.cd.SetCooldownFromDurationObject
+      local longMergedCd = false
+      pcall(function()
+        longMergedCd = type(duration) == "number" and duration > ROTATION_LONG_CD_MIN_DURATION
+      end)
       if showSwipe and onCd then
-        if suppressGcd then
-          iconFrame._flexxLastCd = nil
-          ClearLaneCooldownVisual(iconFrame.cd)
-        elseif useDurationObject then
-          ApplyCooldownToIcon(iconFrame.cd, spellID, entry.actionSlot, startTime, duration, modRate)
-        elseif edgeOn then
-          iconFrame._flexxLastCd = { st = startTime, du = duration, mo = modRate }
-          ApplyIconCooldownSwipe(iconFrame.cd, startTime, duration, modRate)
-        elseif not CooldownTripleUnchanged(startTime, duration, modRate, iconFrame._flexxLastCd) then
-          iconFrame._flexxLastCd = { st = startTime, du = duration, mo = modRate }
-          ApplyIconCooldownSwipe(iconFrame.cd, startTime, duration, modRate)
+        local skipCdApply = suppressGcd and not longMergedCd
+        if not skipCdApply then
+          if useDurationObject then
+            ApplyCooldownToIcon(iconFrame.cd, spellID, entry.actionSlot, startTime, duration, modRate)
+          elseif edgeOn then
+            iconFrame._flexxLastCd = { st = startTime, du = duration, mo = modRate }
+            ApplyIconCooldownSwipe(iconFrame.cd, startTime, duration, modRate)
+          elseif not CooldownTripleUnchanged(startTime, duration, modRate, iconFrame._flexxLastCd) then
+            iconFrame._flexxLastCd = { st = startTime, du = duration, mo = modRate }
+            ApplyIconCooldownSwipe(iconFrame.cd, startTime, duration, modRate)
+          end
         end
       else
         iconFrame._flexxWasOnCd = false
@@ -1044,7 +1370,7 @@ local function UpdateLaneIcons(iconPool, spellList, laneShown, isRotationLane)
           end)
         end
       end
-      local curCharges, maxCharges = SpellChargeDisplay(spellID)
+      local curCharges, maxCharges = SpellChargeDisplay(spellID, entry.actionSlot)
       if maxCharges ~= nil and SafeNumberGt(maxCharges, 1) then
         if SafeNumberGt(curCharges, 0) then
           local txt = ""
@@ -1055,7 +1381,8 @@ local function UpdateLaneIcons(iconPool, spellList, laneShown, isRotationLane)
         elseif showSwipe and onCd and SafeNumberGte(remainCd, 0.05) then
           iconFrame.count:SetText(FormatRemainCount(remainCd))
         else
-          iconFrame.count:SetText("0")
+          --- Known 0 charges vs unknown (nil): avoid showing "0" when APIs failed to return a count.
+          iconFrame.count:SetText(curCharges ~= nil and "0" or "")
         end
       elseif showSwipe and onCd and SafeNumberGte(remainCd, 0.05) then
         iconFrame.count:SetText(FormatRemainCount(remainCd))
@@ -1109,6 +1436,29 @@ local function UpdateLanesOnly()
   UpdateLane2And3()
 end
 
+--- After combat, last-cast GCD suppression + long-CD cache + frozen swipe state can make cooldowns look "stuck" like combat until the next API tick. Clear and redraw from fresh cooldown data (does not change WoW combat state).
+local function ResetCooldownPresentationAfterLeaveCombat()
+  CC.state.lastCastSpellId = nil
+  CC.state.lastCastAt = nil
+  CC.state.lastCastSpellName = nil
+  CC.state.rotationLongCdEnd = {}
+  local function clearPool(pool)
+    if not pool then return end
+    for i = 1, #pool do
+      local iconFrame = pool[i]
+      if iconFrame then
+        iconFrame._flexxLastCd = nil
+        iconFrame._flexxWasOnCd = false
+        if iconFrame.cd then
+          ClearLaneCooldownVisual(iconFrame.cd)
+        end
+      end
+    end
+  end
+  clearPool(CC.state.lane2Icons)
+  clearPool(CC.state.lane3Icons)
+end
+
 local function Layout()
   local db = DB()
   local f = CC.state.frame
@@ -1120,7 +1470,9 @@ local function Layout()
   local cooldownW = ICONS_LANE3 * size + (ICONS_LANE3 - 1) * iconGap
   local frameW = math.max(rotationW, cooldownW)
   local pipBarW = rotationW * PIP_BAR_WIDTH_FRAC
-  local lane1H = PIP_H + (PIP_WRAP_PAD * 2)
+  local lane1InnerH = math.max(LANE1_STATUS_H, PIP_H)
+  local lane1ContentH = lane1InnerH + (PIP_WRAP_PAD * 2)
+  local lane1H = lane1ContentH + LANE1_BOTTOM_BG_H
   local totalH = lane1H + PIP_ROTATION_GAP + size + size
   f:SetSize(frameW, totalH)
 
@@ -1128,9 +1480,17 @@ local function Layout()
   CC.state.lane1Wrap:ClearAllPoints()
   CC.state.lane1Wrap:SetSize(wrapW, lane1H)
   CC.state.lane1Wrap:SetPoint("TOPLEFT", f, "TOPLEFT", (frameW - wrapW) / 2, 0)
-  CC.state.lane1:ClearAllPoints()
-  CC.state.lane1:SetSize(pipBarW, PIP_H)
-  CC.state.lane1:SetPoint("TOPLEFT", CC.state.lane1Wrap, "TOPLEFT", PIP_WRAP_PAD, -PIP_WRAP_PAD)
+  local lane1CenterYOff = math.floor(LANE1_BOTTOM_BG_H / 2)
+  if CC.state.lane1 then
+    CC.state.lane1:ClearAllPoints()
+    CC.state.lane1:SetSize(pipBarW, lane1InnerH)
+    CC.state.lane1:SetPoint("CENTER", CC.state.lane1Wrap, "CENTER", 0, lane1CenterYOff)
+  end
+  if CC.state.lane1Bar then
+    CC.state.lane1Bar:ClearAllPoints()
+    CC.state.lane1Bar:SetSize(pipBarW, LANE1_STATUS_H)
+    CC.state.lane1Bar:SetPoint("CENTER", CC.state.lane1Wrap, "CENTER", 0, lane1CenterYOff)
+  end
 
   CC.state.lane2:ClearAllPoints()
   CC.state.lane2:SetSize(rotationW, size)
@@ -1207,22 +1567,50 @@ local function CreateFrameOnce()
 
   CC.state.lane1Wrap = CreateFrame("Frame", nil, f)
   CC.state.lane1Bg = CC.state.lane1Wrap:CreateTexture(nil, "BACKGROUND")
-  CC.state.lane1Bg:SetAllPoints(CC.state.lane1Wrap)
   CC.state.lane1Bg:SetTexture("Interface\\Buttons\\WHITE8x8")
   CC.state.lane1Bg:SetVertexColor(0, 0, 0, PIP_WRAP_BG_A)
+  CC.state.lane1Bg:Hide()
+  --- Child frame + texture (not a second Texture on the wrap): avoids client quirks with multi-layer BACKGROUND textures.
+  do
+    local bot = CreateFrame("Frame", nil, CC.state.lane1Wrap)
+    CC.state.lane1BgBottom = bot
+    bot:SetFrameLevel(CC.state.lane1Wrap:GetFrameLevel() + 1)
+    local tex = bot:CreateTexture(nil, "BACKGROUND")
+    tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+    tex:SetVertexColor(0, 0, 0, PIP_WRAP_BG_A)
+    tex:SetAllPoints(bot)
+    bot:Hide()
+  end
   CC.state.lane1 = CreateFrame("Frame", nil, CC.state.lane1Wrap)
-  CC.state.lane2 = CreateFrame("Frame", nil, f)
-  CC.state.lane3 = CreateFrame("Frame", nil, f)
-
+  CC.state.lane1:SetFrameLevel(CC.state.lane1Wrap:GetFrameLevel() + 2)
   for i = 1, MAX_PIPS do
     local holder = CreateFrame("Frame", nil, CC.state.lane1)
-    pcall(function()
-      holder:SetClipsChildren(true)
-    end)
-    local tex = holder:CreateTexture(nil, "ARTWORK")
-    tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-    CC.state.lane1Pips[i] = { holder = holder, tex = tex }
+    local bgTex = holder:CreateTexture(nil, "BACKGROUND")
+    bgTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+    local fillTex = holder:CreateTexture(nil, "ARTWORK", nil, 1)
+    fillTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+    CC.state.lane1Pips[i] = { holder = holder, bgTex = bgTex, fillTex = fillTex, tex = fillTex }
   end
+  do
+    local bar = CreateFrame("StatusBar", nil, CC.state.lane1Wrap)
+    CC.state.lane1Bar = bar
+    bar:SetFrameLevel(CC.state.lane1Wrap:GetFrameLevel() + 3)
+    local bg = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+    bg:SetAllPoints(bar)
+    bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+    bg:SetVertexColor(PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B, PIP_EMPTY_A)
+    bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    local st = bar:GetStatusBarTexture()
+    if st then
+      st:SetHorizTile(false)
+      st:SetVertTile(false)
+    end
+    bar:SetMinMaxValues(0, 100)
+    bar:SetValue(0)
+    bar:Hide()
+  end
+  CC.state.lane2 = CreateFrame("Frame", nil, f)
+  CC.state.lane3 = CreateFrame("Frame", nil, f)
   for i = 1, ICONS_LANE2 do
     CC.state.lane2Icons[i] = NewIcon(CC.state.lane2)
   end
@@ -1263,6 +1651,7 @@ local function EnsureCombatUpdater()
   u:RegisterEvent("PLAYER_REGEN_DISABLED")
   u:RegisterEvent("PLAYER_REGEN_ENABLED")
   u:RegisterEvent("UNIT_POWER_UPDATE")
+  u:RegisterEvent("UNIT_MAXPOWER")
   u:RegisterEvent("SPELL_UPDATE_COOLDOWN")
   u:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
   u:RegisterEvent("PLAYER_TALENT_UPDATE")
@@ -1275,6 +1664,9 @@ local function EnsureCombatUpdater()
   u:RegisterEvent("SPELLS_CHANGED")
   u:RegisterEvent("UNIT_SPELLCAST_SENT")
   u:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+  pcall(function()
+    u:RegisterEvent("RUNE_POWER_UPDATE")
+  end)
   u:SetScript("OnEvent", function(_, ev, unit, castGUID, spellID)
     if ev == "UNIT_SPELLCAST_SENT" or ev == "UNIT_SPELLCAST_SUCCEEDED" then
       if unit ~= "player" then return end
@@ -1291,7 +1683,11 @@ local function EnsureCombatUpdater()
       end
       return
     end
-    if ev == "UNIT_POWER_UPDATE" then
+    if ev == "RUNE_POWER_UPDATE" then
+      UpdateLane1()
+      return
+    end
+    if ev == "UNIT_POWER_UPDATE" or ev == "UNIT_MAXPOWER" then
       if unit and unit ~= "player" then return end
       UpdateLane1()
       return
@@ -1305,22 +1701,47 @@ local function EnsureCombatUpdater()
       or ev == "PLAYER_TALENT_UPDATE"
       or ev == "ACTIVE_TALENT_GROUP_CHANGED"
       or ev == "PLAYER_SPECIALIZATION_CHANGED" then
+      if ev == "PLAYER_ENTERING_WORLD" then
+        CC.state.regenCombatUi = nil
+      end
       CC.RefreshFromOptions()
       return
     end
-    if ev == "PLAYER_REGEN_DISABLED" or ev == "PLAYER_REGEN_ENABLED" then
+    if ev == "PLAYER_REGEN_DISABLED" then
+      CC.state.regenCombatUi = true
+      UpdateLanesOnly()
+      return
+    end
+    if ev == "PLAYER_REGEN_ENABLED" then
+      CC.state.regenCombatUi = nil
+      ResetCooldownPresentationAfterLeaveCombat()
       UpdateLanesOnly()
       return
     end
     UpdateLanesOnly()
   end)
+  --- Lane 2/3 rebuilds spell lists (action bar + spellbook scan) — never run at the DK rune fast lane-1 rate.
+  local LANE23_ONUPDATE_INTERVAL = 0.25
   u:SetScript("OnUpdate", function(_, elapsed)
-    CC.state._ticker = (CC.state._ticker or 0) + elapsed
-    --- ~4 Hz: enough to resync swipes/counts; triple+resync gate avoids restarting the spiral every tick.
-    if CC.state._ticker < 0.25 then return end
-    CC.state._ticker = 0
-    if not CC.state.frame or not CC.state.frame:IsShown() then return end
-    UpdateLane2And3()
+    if not CC.state.frame then return end
+    --- onlyInCombat: poll visibility (no target => hide; else REGEN hint or UAC).
+    local dbVis = DB()
+    if dbVis.onlyInCombat then
+      UpdateVisibility()
+    end
+    if not CC.state.frame:IsShown() then return end
+    CC.state._accLane1 = (CC.state._accLane1 or 0) + elapsed
+    CC.state._accLane23 = (CC.state._accLane23 or 0) + elapsed
+    --- DK rune pips: ~28 Hz lane 1 only; rotation/cooldown icons stay ~4 Hz.
+    local lane1Int = CC.state.lane1FastTick and 0.035 or LANE23_ONUPDATE_INTERVAL
+    if CC.state._accLane1 >= lane1Int then
+      CC.state._accLane1 = 0
+      UpdateLane1()
+    end
+    if CC.state._accLane23 >= LANE23_ONUPDATE_INTERVAL then
+      CC.state._accLane23 = 0
+      UpdateLane2And3()
+    end
   end)
 end
 

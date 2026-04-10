@@ -5,19 +5,27 @@ local MAX_PIPS = 7
 local PIP_W, PIP_H = 12, 7
 --- Pip row height; centered on health top so half sits above the bar (same idea as inset power straddling the bottom edge).
 local TOP_BAR_H = 12
+--- Fallback if Enum.PowerType.RunicPower is unavailable; matches PowerDisplayRunicPower / classic index.
+local RUNIC_POWER_TYPE_INDEX = 6
 
---- Power types to probe (first match with UnitPowerMax > 0 wins). Covers combo, holy power, chi, shards, arcane, essence.
+--- Power types to probe (first match with UnitPowerMax > 0 wins). Skip nil enums so ipairs never stops early.
 local function SecondaryPowerProbeList()
   if not Enum or not Enum.PowerType then return {} end
   local E = Enum.PowerType
-  return {
-    E.ComboPoints,
-    E.HolyPower,
-    E.Chi,
-    E.SoulShards,
-    E.ArcaneCharges,
-    E.Essence,
-  }
+  local t = {}
+  local function add(pt)
+    if pt ~= nil then
+      t[#t + 1] = pt
+    end
+  end
+  add(E.ComboPoints)
+  add(E.HolyPower)
+  add(E.Chi)
+  add(E.SoulShards)
+  add(E.ArcaneCharges)
+  add(E.Essence)
+  add(E.RunicPower)
+  return t
 end
 
 local function SecondaryPowerTypeColor(pt)
@@ -30,6 +38,7 @@ local function SecondaryPowerTypeColor(pt)
     if pt == E.SoulShards then return 0.60, 0.32, 0.95 end
     if pt == E.ArcaneCharges then return 0.82, 0.44, 0.95 end
     if pt == E.Essence then return 0.32, 0.78, 0.98 end
+    if pt == E.RunicPower then return 0.00, 0.82, 1.00 end
   end
   local pbc = PowerBarColor and PowerBarColor[pt]
   if pbc then
@@ -41,16 +50,86 @@ local function SecondaryPowerTypeColor(pt)
   return 0.95, 0.85, 0.35
 end
 
+--- Read one power type. All math on UnitPower* must run inside pcall — secrets break CoerceAmount/PlainNumber and compare as 0 outside.
+local function ReadSecondaryPowerType(unit, pt)
+  if pt == nil then return nil end
+  local mxP, curP
+  local ok = pcall(function()
+    local mx = UnitPowerMax(unit, pt)
+    local cur = UnitPower(unit, pt)
+    mxP = mx + 0
+    curP = (cur or 0) + 0
+  end)
+  if not ok then return nil end
+  local goodMx = false
+  pcall(function()
+    goodMx = type(mxP) == "number" and mxP == mxP and mxP > 0
+  end)
+  if not goodMx then return nil end
+  pcall(function()
+    if type(curP) == "number" and curP < 0 then curP = 0 end
+  end)
+  if curP == nil or (type(curP) == "number" and curP ~= curP) then curP = 0 end
+  return pt, curP, mxP
+end
+
+local function PowerTokenIsRunic(token)
+  if type(token) ~= "string" then return false end
+  local up = string.upper(token)
+  return up == "RUNIC_POWER" or up == "RUNIC"
+end
+
 --- Returns powerType, current, max or nil, 0, 0 if none.
 function UF.GetSecondaryPowerValues(unit)
   if not unit or not UnitExists(unit) then return nil, 0, 0 end
-  for _, pt in ipairs(SecondaryPowerProbeList()) do
-    local okMx, mx = pcall(function() return UnitPowerMax(unit, pt) end)
-    if okMx and type(mx) == "number" and mx > 0 then
-      local okC, cur = pcall(function() return UnitPower(unit, pt) end)
-      local c = (okC and type(cur) == "number") and cur or 0
-      return pt, c, mx
+
+  local E = Enum and Enum.PowerType
+  local rpEnum = E and E.RunicPower
+
+  --- Prefer Blizzard's active power type (correct enum index even when constants shift).
+  local okType, powerType, powerToken = pcall(function()
+    return UnitPowerType(unit)
+  end)
+  if okType and powerType ~= nil then
+    local isRunic = PowerTokenIsRunic(powerToken)
+    if not isRunic and rpEnum ~= nil and powerType == rpEnum then
+      isRunic = true
     end
+    if not isRunic and powerType == RUNIC_POWER_TYPE_INDEX then
+      isRunic = true
+    end
+    if isRunic then
+      local a, b, c = ReadSecondaryPowerType(unit, powerType)
+      if a then return a, b, c end
+    end
+  end
+
+  --- className, classFilename, classId — use filename + id (do not rely on a single ambiguous return).
+  local classFilename = select(2, UnitClass(unit))
+  local classId = select(3, UnitClass(unit))
+  local isDK = (type(classId) == "number" and classId == 6)
+    or (type(classFilename) == "string" and string.upper(classFilename) == "DEATHKNIGHT")
+
+  if isDK then
+    if rpEnum ~= nil then
+      local a, b, c = ReadSecondaryPowerType(unit, rpEnum)
+      if a then return a, b, c end
+    end
+    local a2, b2, c2 = ReadSecondaryPowerType(unit, RUNIC_POWER_TYPE_INDEX)
+    if a2 then return a2, b2, c2 end
+    --- DK: primary power type from UnitPowerType is usually runic power; catches enum/index drift.
+    do
+      local okPt, ptype = pcall(function() return select(1, UnitPowerType(unit)) end)
+      if okPt and ptype ~= nil then
+        local a, b, c = ReadSecondaryPowerType(unit, ptype)
+        if a then return a, b, c end
+      end
+    end
+  end
+
+  for _, pt in ipairs(SecondaryPowerProbeList()) do
+    local a, b, c = ReadSecondaryPowerType(unit, pt)
+    if a then return a, b, c end
   end
   return nil, 0, 0
 end
@@ -129,7 +208,11 @@ function UF.UpdateTopResourceBar(f)
   end
 
   local pt, cur, mx = UF.GetSecondaryPowerValues(f.unit)
-  if pt == nil or mx <= 0 then
+  local showBar = false
+  pcall(function()
+    showBar = pt ~= nil and type(mx) == "number" and mx == mx and mx > 0
+  end)
+  if not showBar then
     hideAll()
     return
   end

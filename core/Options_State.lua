@@ -83,8 +83,8 @@ function O.EnsureDB()
   if _G.FlexxUIDB.optionsShowAdvanced == nil then _G.FlexxUIDB.optionsShowAdvanced = false end
   if _G.FlexxUIDB.combatCenter == nil then _G.FlexxUIDB.combatCenter = {} end
   local cc = _G.FlexxUIDB.combatCenter
-  if cc.enabled == nil then cc.enabled = false end
-  if cc.onlyInCombat == nil then cc.onlyInCombat = true end
+  if cc.enabled == nil then cc.enabled = true end
+  if cc.onlyInCombat == nil then cc.onlyInCombat = false end
   if cc.lockFrame == nil then cc.lockFrame = false end
   if type(cc.scale) ~= "number" or cc.scale ~= cc.scale then cc.scale = 1 end
   if type(cc.iconSize) ~= "number" then cc.iconSize = 44 end
@@ -99,10 +99,9 @@ function O.EnsureDB()
   if type(cc.anchorX) ~= "number" then cc.anchorX = 0 end
   if type(cc.anchorY) ~= "number" then cc.anchorY = -180 end
   if _G.FlexxUIDB.optionsCollapsed == nil then _G.FlexxUIDB.optionsCollapsed = {} end
-  if _G.FlexxUIDB.optionsDevSubTab == nil and _G.FlexxUIDB.optionsDebugSubTab ~= nil then
-    _G.FlexxUIDB.optionsDevSubTab = _G.FlexxUIDB.optionsDebugSubTab
-  end
+  O.MigrateLegacyOptionKeys()
   if _G.FlexxUIDB.optionsDevSubTab == nil then _G.FlexxUIDB.optionsDevSubTab = "cast" end
+  if _G.FlexxUIDB.devGroupIndicatorShowSolo == nil then _G.FlexxUIDB.devGroupIndicatorShowSolo = false end
   if _G.FlexxUIDB.optionsCombatSubTab == nil then _G.FlexxUIDB.optionsCombatSubTab = "overview" end
   if ns.UnitFrames and ns.UnitFrames.EnsureAuraDB then ns.UnitFrames.EnsureAuraDB() end
 end
@@ -286,3 +285,16 @@ function O.SelectTab(tabKey)
   O.RefreshScrollPages()
 end
 
+function O.MigrateLegacyOptionKeys()
+  _G.FlexxUIDB = _G.FlexxUIDB or {}
+  if _G.FlexxUIDB.optionsDevSubTab == nil and _G.FlexxUIDB.optionsDebugSubTab ~= nil then
+    _G.FlexxUIDB.optionsDevSubTab = _G.FlexxUIDB.optionsDebugSubTab
+  end
+end
+
+function O.ArtFont(parent, templateName)
+  if ns.Fonts and ns.Fonts.CreateFontString then
+    return ns.Fonts.CreateFontString(parent, "ARTWORK", templateName, "all")
+  end
+  return parent:CreateFontString(nil, "ARTWORK", templateName)
+end

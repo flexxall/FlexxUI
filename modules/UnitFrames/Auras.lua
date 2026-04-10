@@ -70,6 +70,44 @@ local function GetAuraLayout(db, side)
   return bax, bay, dax, day
 end
 
+--- Usable width for aura icons (aligned with the unit health bar so target buffs wrap to the frame width).
+local function AuraRowMaxWidth(f)
+  local w = f.health and f.health:GetWidth()
+  if type(w) ~= "number" or w ~= w or w < 8 then
+    w = f.GetWidth and f:GetWidth() or nil
+  end
+  if type(w) ~= "number" or w ~= w or w < 8 then
+    w = 200
+  end
+  return w
+end
+
+--- Left-to-right, wrapping to additional rows above when wider than maxWidth. Caller updates buttons 1..n first.
+local function LayoutWrappedAuraIcons(host, buttons, n, maxWidth, rowH)
+  local cellW = ICON_SIZE + ICON_GAP
+  local perRow = math.max(1, math.floor((maxWidth + ICON_GAP) / cellW))
+  local numRows = (n > 0) and math.ceil(n / perRow) or 0
+  local hostH = rowH
+  if n > 0 and numRows > 0 then
+    hostH = numRows * rowH + (numRows - 1) * ICON_GAP
+  end
+  host:SetWidth(maxWidth)
+  host:SetHeight(hostH)
+  for i = 1, MAX_ICONS do
+    local btn = buttons[i]
+    if not btn then break end
+    if i <= n then
+      local idx = i - 1
+      local col = idx % perRow
+      local row = math.floor(idx / perRow)
+      btn:ClearAllPoints()
+      btn:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", col * cellW, row * (rowH + ICON_GAP))
+    else
+      btn:Hide()
+    end
+  end
+end
+
 local function GetTestDebuffPlaceholders()
   local now = GetTime()
   return {
@@ -368,6 +406,7 @@ end
 local function CreateTimerBarRow(parent)
   local row = CreateFrame("Frame", nil, parent)
   row:SetHeight(TIMER_ROW_H)
+  row:EnableMouse(true)
   local icon = row:CreateTexture(nil, "ARTWORK")
   icon:SetSize(TIMER_ICON, TIMER_ICON)
   icon:SetPoint("LEFT", 0, 0)
@@ -380,12 +419,34 @@ local function CreateTimerBarRow(parent)
   bar:SetMinMaxValues(0, 1)
   bar:SetValue(1)
   bar:SetStatusBarColor(0.88, 0.22, 0.18, 0.95)
+  bar:EnableMouse(false)
   local bg = bar:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
   bg:SetColorTexture(0, 0, 0, 0.5)
   row.icon = icon
   row.bar = bar
   row:Hide()
+  row:SetScript("OnEnter", function(self)
+    local tip = GameTooltip
+    if not tip or tip:IsForbidden() then return end
+    tip:SetOwner(self, "ANCHOR_RIGHT")
+    local usedSpell = false
+    if self.spellId ~= nil then
+      usedSpell = select(1, pcall(function()
+        tip:SetSpellByID(self.spellId)
+      end))
+    end
+    if not usedSpell and self.auraName ~= nil then
+      pcall(function()
+        tip:SetText(tostring(self.auraName), 1, 1, 1)
+      end)
+    end
+    tip:Show()
+  end)
+  row:SetScript("OnLeave", function()
+    local tip = GameTooltip
+    if tip and not tip:IsForbidden() then tip:Hide() end
+  end)
   return row
 end
 
@@ -422,6 +483,8 @@ local function UpdateTimerBarRow(row, data, devPreviewTimer)
   end)
   row.bar:SetMinMaxValues(0, dur)
   row.bar:SetValue(remain)
+  row.spellId = data.spellId or data.spellID
+  row.auraName = data.name
   row:Show()
 end
 
@@ -449,7 +512,8 @@ function UF.CreateUnitAuras(f)
   if not f or f._flexxAurasBuilt then return end
   f._flexxAurasBuilt = true
 
-  local z = (f:GetFrameLevel() or 0) + 125
+  --- Above health/name/power (see ApplyUnitFrameChildLevels); value overridden there after SetFrameLevel.
+  local z = (f:GetFrameLevel() or 0) + 200
 
   f.auraTimerBarHost = CreateFrame("Frame", nil, f)
   f.auraTimerBarHost:SetFrameLevel(z)
@@ -581,18 +645,14 @@ function UF.UpdateUnitAuras(f)
     local n = math.min(#list, MAX_ICONS)
     f.auraDebuffHost:ClearAllPoints()
     f.auraDebuffHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", debuffAx, debuffAy)
-    f.auraDebuffHost:SetHeight(rowH)
     f.auraDebuffHost:Show()
-    for i = 1, MAX_ICONS do
-      if i <= n then
-        UpdateAuraButton(f.auraDebuffButtons[i], list[i], prevD)
-        local btn = f.auraDebuffButtons[i]
-        btn:ClearAllPoints()
-        btn:SetPoint("BOTTOMLEFT", f.auraDebuffHost, "BOTTOMLEFT", (i - 1) * (ICON_SIZE + ICON_GAP), 0)
-      else
-        f.auraDebuffButtons[i]:Hide()
-      end
+    for i = 1, n do
+      UpdateAuraButton(f.auraDebuffButtons[i], list[i], prevD)
     end
+    for i = n + 1, MAX_ICONS do
+      f.auraDebuffButtons[i]:Hide()
+    end
+    LayoutWrappedAuraIcons(f.auraDebuffHost, f.auraDebuffButtons, n, AuraRowMaxWidth(f), rowH)
   else
     f.auraDebuffHost:Hide()
     for i = 1, MAX_ICONS do
@@ -614,22 +674,19 @@ function UF.UpdateUnitAuras(f)
       local th = f.auraTimerBarHost:GetHeight() or 0
       buffY = math.max(buffAy, debuffAy + th + 4)
     elseif showDebuffIconRow and f.auraDebuffHost and f.auraDebuffHost:IsShown() then
-      buffY = math.max(buffAy, debuffAy + rowH + 4)
+      local dh = f.auraDebuffHost:GetHeight() or rowH
+      buffY = math.max(buffAy, debuffAy + dh + 4)
     end
     f.auraBuffHost:ClearAllPoints()
     f.auraBuffHost:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", buffAx, buffY)
-    f.auraBuffHost:SetHeight(rowH)
     f.auraBuffHost:Show()
-    for i = 1, MAX_ICONS do
-      if i <= n then
-        UpdateAuraButton(f.auraBuffButtons[i], list[i], prevB)
-        local btn = f.auraBuffButtons[i]
-        btn:ClearAllPoints()
-        btn:SetPoint("BOTTOMLEFT", f.auraBuffHost, "BOTTOMLEFT", (i - 1) * (ICON_SIZE + ICON_GAP), 0)
-      else
-        f.auraBuffButtons[i]:Hide()
-      end
+    for i = 1, n do
+      UpdateAuraButton(f.auraBuffButtons[i], list[i], prevB)
     end
+    for i = n + 1, MAX_ICONS do
+      f.auraBuffButtons[i]:Hide()
+    end
+    LayoutWrappedAuraIcons(f.auraBuffHost, f.auraBuffButtons, n, AuraRowMaxWidth(f), rowH)
   elseif f.auraBuffHost then
     f.auraBuffHost:Hide()
     if f.auraBuffButtons then
@@ -638,6 +695,15 @@ function UF.UpdateUnitAuras(f)
       end
     end
   end
+end
+
+--- True if the cursor is over debuff/buff icon hosts or debuff timer bars (avoid unit tooltip stealing aura tooltips).
+function UF.IsMouseOverAuraHosts(f)
+  if not f then return false end
+  local function over(host)
+    return host and host:IsShown() and MouseIsOver(host)
+  end
+  return over(f.auraDebuffHost) or over(f.auraBuffHost) or over(f.auraTimerBarHost)
 end
 
 function UF.RefreshAurasFromOptions()
