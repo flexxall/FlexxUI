@@ -85,6 +85,35 @@ function F.CreateFontString(parent, layer, templateName, scope)
   return fs
 end
 
+--- Global Font template name (GameFontHighlight + Flexx gold RGB). Used by `CreateFlexxGoldFontString`.
+F.FlexxGoldFontTemplateName = "FlexxUIFont_FlexxGold"
+
+--- Create the global Font object once: base GameFontHighlight, default text color from `ns.GetFlexxGoldRGB`.
+function F.EnsureFlexxGoldFont()
+  local name = F.FlexxGoldFontTemplateName
+  if _G[name] then return end
+  pcall(function()
+    local font = CreateFont(name)
+    font:SetFontObject(GameFontHighlight)
+    local r, g, b = ns.GetFlexxGoldRGB()
+    font:SetTextColor(r, g, b)
+  end)
+end
+
+--- FontString using the Flexx gold template (inherits face from GameFontHighlight + preset scaling; color from Theme).
+function F.CreateFlexxGoldFontString(parent, layer, scope)
+  F.EnsureFlexxGoldFont()
+  local tmpl = F.FlexxGoldFontTemplateName
+  if _G[tmpl] then
+    return F.CreateFontString(parent, layer or "OVERLAY", tmpl, scope or "unit")
+  end
+  local fs = F.CreateFontString(parent, layer or "OVERLAY", "GameFontHighlight", scope or "unit")
+  if ns.SetFontStringFlexxGoldColor then
+    ns.SetFontStringFlexxGoldColor(fs)
+  end
+  return fs
+end
+
 --- After base font apply; survives preset/scale changes (e.g. resting "zzz" middle letter).
 local function applyFontExtraSize(fs)
   local d = fs and fs._flexxFontExtraSize

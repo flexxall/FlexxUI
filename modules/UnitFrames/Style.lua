@@ -175,14 +175,26 @@ end
 
 function UF.ApplyPowerBarTexture(bar)
   if not bar then return end
-  -- Thin bars need a solid texture; UI-StatusBar often reads as a dark line at low height.
-  bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+  UF.EnsureDB()
+  local mode = (_G.FlexxUIDB and _G.FlexxUIDB.powerBarTexture) or "none"
+  if not UF.const.textures[mode] then
+    mode = "none"
+  end
+  bar:SetStatusBarTexture(UF.GetTexturePath(mode))
   local tex = bar:GetStatusBarTexture()
   if tex then
     tex:SetHorizTile(false)
     tex:SetVertTile(false)
     tex:SetVertexColor(1, 1, 1, 1)
   end
+  if not bar._flexxPowerFlatMatte then
+    local matte = bar:CreateTexture(nil, "OVERLAY")
+    matte:SetAllPoints()
+    matte:SetTexture("Interface\\Buttons\\WHITE8x8")
+    matte:SetVertexColor(0, 0, 0, 0.08)
+    bar._flexxPowerFlatMatte = matte
+  end
+  bar._flexxPowerFlatMatte:SetShown(mode == "flat")
   UF.ApplyPowerBarBackdrop(bar)
 end
 
@@ -192,7 +204,7 @@ function UF.ApplyPowerBarBackdrop(bar)
   local db = _G.FlexxUIDB or {}
   local role = bar._flexxBarRole or "power"
   local dark = (role == "cast" and (db.castBarFillStyle or "default") == "dark")
-    or (role ~= "cast" and (db.powerBarColorStyle or "default") == "dark")
+    or (role ~= "cast" and (db.powerBarColorStyle or "none") == "dark")
   if dark then
     bar:SetBackdropColor(0.08, 0.09, 0.11, 0.92)
   else
@@ -235,9 +247,126 @@ function UF.GetDeathKnightSpecResourceRGB(unit)
   return 0.00, 0.82, 1.00
 end
 
+--- Demon Hunter: spec-matched primary bar colors. Havoc Fury #C942FD; Devourer Fury #00CBFF; Vengeance Pain #FF9C00.
+--- Returns r, g, b or nil if not applicable.
+function UF.GetDemonHunterSpecResourceRGB(unit, powerType)
+  if not unit or unit ~= "player" or not UnitExists(unit) then return nil end
+  local classId = select(3, UnitClass(unit))
+  if type(classId) ~= "number" or classId ~= 12 then return nil end
+  local spec = GetSpecialization and GetSpecialization()
+  if spec ~= 1 and spec ~= 2 and spec ~= 3 then return nil end
+  local pt = powerType
+  local E = Enum and Enum.PowerType
+  local furyEnum = E and E.Fury
+  local painEnum = E and E.Pain
+  local function isFury()
+    if furyEnum ~= nil and pt == furyEnum then return true end
+    local ok, v = pcall(function() return type(pt) == "number" and pt == 17 end)
+    return ok and v
+  end
+  local function isPain()
+    if painEnum ~= nil and pt == painEnum then return true end
+    local ok, v = pcall(function() return type(pt) == "number" and pt == 18 end)
+    return ok and v
+  end
+  if spec == 1 then
+    if isFury() then
+      return 201 / 255, 66 / 255, 253 / 255
+    end
+    return nil
+  end
+  if spec == 3 then
+    if isFury() then
+      return 0 / 255, 203 / 255, 255 / 255
+    end
+    return nil
+  end
+  if spec == 2 and isPain() then
+    return 1.0, 156 / 255, 0.0
+  end
+  return nil
+end
+
+local function DimPowerBarRGB(r, g, b)
+  return r * 0.58 + 0.08, g * 0.58 + 0.08, b * 0.58 + 0.08
+end
+
+local function GetBlizzardPowerBarRGB(pType)
+  local pc = _G.PowerBarColor and _G.PowerBarColor[pType]
+  if pc and type(pc.r) == "number" and type(pc.g) == "number" and type(pc.b) == "number" then
+    return pc.r, pc.g, pc.b
+  end
+  return nil
+end
+
+--- Undimmed RGB for automatic coloring (same rules as ApplyPowerBarColor when custom fill is off).
+--- texMode: "none" | "default" | "flat"
+function UF.GetPowerBarAutomaticRGB(unit, powerType, texMode)
+  local pType = powerType
+  if pType == nil and unit then
+    local ok, v = pcall(UnitPowerType, unit)
+    pType = (ok and v ~= nil) and v or 0
+  elseif pType == nil then
+    pType = 0
+  end
+  local tm = texMode or "none"
+  if tm ~= "none" and tm ~= "default" and tm ~= "flat" then
+    tm = "none"
+  end
+  local mana = 0
+  if Enum and Enum.PowerType and Enum.PowerType.Mana ~= nil then
+    mana = Enum.PowerType.Mana
+  end
+
+  local function isRunic()
+    local E = Enum and Enum.PowerType
+    if E and E.RunicPower ~= nil and pType == E.RunicPower then
+      return true
+    end
+    local r = false
+    pcall(function()
+      if type(pType) == "number" and pType == 6 then r = true end
+    end)
+    return r
+  end
+
+  if tm == "default" then
+    if isRunic() then
+      local dr, dg, dbk = UF.GetDeathKnightSpecResourceRGB(unit)
+      if dr then
+        return dr, dg, dbk
+      end
+    end
+    local dhr, dhg, dhb = UF.GetDemonHunterSpecResourceRGB(unit, pType)
+    if dhr then
+      return dhr, dhg, dhb
+    end
+    local br, bg, bb = GetBlizzardPowerBarRGB(pType)
+    if br then
+      return br, bg, bb
+    end
+  end
+
+  if pType == mana then
+    return 0.22, 0.52, 0.95
+  end
+  if isRunic() then
+    local dr, dg, dbk = UF.GetDeathKnightSpecResourceRGB(unit)
+    if dr then
+      return dr, dg, dbk
+    end
+  end
+  local dhr2, dhg2, dhb2 = UF.GetDemonHunterSpecResourceRGB(unit, pType)
+  if dhr2 then
+    return dhr2, dhg2, dhb2
+  end
+  return 0.93, 0.86, 0.22
+end
+
 function UF.ApplyPowerBarColor(bar, unit, powerType)
   if not bar or not unit then return end
   UF.EnsureDB()
+  local db = _G.FlexxUIDB or {}
   local pType = powerType
   if pType == nil then
     local ok, v = pcall(UnitPowerType, unit)
@@ -247,7 +376,72 @@ function UF.ApplyPowerBarColor(bar, unit, powerType)
   if Enum and Enum.PowerType and Enum.PowerType.Mana ~= nil then
     mana = Enum.PowerType.Mana
   end
-  local dark = (_G.FlexxUIDB.powerBarColorStyle or "default") == "dark"
+  local dark = (db.powerBarColorStyle or "none") == "dark"
+  local texMode = db.powerBarTexture or "none"
+  if texMode ~= "none" and texMode ~= "default" and texMode ~= "flat" then
+    texMode = "none"
+  end
+
+  if db.powerBarUseCustomColor then
+    local c = db.powerBarCustomColor or {}
+    local r = type(c.r) == "number" and c.r or 0.5
+    local g = type(c.g) == "number" and c.g or 0.5
+    local b = type(c.b) == "number" and c.b or 0.5
+    if dark then
+      r, g, b = DimPowerBarRGB(r, g, b)
+    end
+    bar:SetStatusBarColor(r, g, b)
+    UF.ApplyPowerBarBackdrop(bar)
+    return
+  end
+
+  --- Blizzard UI-StatusBar strip: use PowerBarColor (and DK spec for runic) like the stock UI.
+  if texMode == "default" then
+    local isRunic = false
+    local E = Enum and Enum.PowerType
+    if E and E.RunicPower ~= nil and pType == E.RunicPower then
+      isRunic = true
+    else
+      pcall(function()
+        if type(pType) == "number" and pType == 6 then isRunic = true end
+      end)
+    end
+    if isRunic then
+      local dr, dg, dbk = UF.GetDeathKnightSpecResourceRGB(unit)
+      if dr then
+        if dark then
+          local r, g, b = DimPowerBarRGB(dr, dg, dbk)
+          bar:SetStatusBarColor(r, g, b)
+        else
+          bar:SetStatusBarColor(dr, dg, dbk)
+        end
+        UF.ApplyPowerBarBackdrop(bar)
+        return
+      end
+    end
+    do
+      local dhr, dhg, dhb = UF.GetDemonHunterSpecResourceRGB(unit, pType)
+      if dhr then
+        if dark then
+          dhr, dhg, dhb = DimPowerBarRGB(dhr, dhg, dhb)
+        end
+        bar:SetStatusBarColor(dhr, dhg, dhb)
+        UF.ApplyPowerBarBackdrop(bar)
+        return
+      end
+    end
+    local br, bg, bb = GetBlizzardPowerBarRGB(pType)
+    if br then
+      if dark then
+        br, bg, bb = DimPowerBarRGB(br, bg, bb)
+      end
+      bar:SetStatusBarColor(br, bg, bb)
+      UF.ApplyPowerBarBackdrop(bar)
+      return
+    end
+  end
+
+  --- Flat / none texture: legacy FlexxUI preset fills (bright vs dark tint).
   if pType == mana then
     if dark then
       bar:SetStatusBarColor(0.10, 0.30, 0.68)
@@ -265,13 +459,25 @@ function UF.ApplyPowerBarColor(bar, unit, powerType)
       end)
     end
     if isRunic then
-      local dr, dg, db = UF.GetDeathKnightSpecResourceRGB(unit)
+      local dr, dg, dbk = UF.GetDeathKnightSpecResourceRGB(unit)
       if dr then
         if dark then
-          bar:SetStatusBarColor(dr * 0.58 + 0.08, dg * 0.58 + 0.08, db * 0.58 + 0.08)
+          local r, g, b = DimPowerBarRGB(dr, dg, dbk)
+          bar:SetStatusBarColor(r, g, b)
         else
-          bar:SetStatusBarColor(dr, dg, db)
+          bar:SetStatusBarColor(dr, dg, dbk)
         end
+        UF.ApplyPowerBarBackdrop(bar)
+        return
+      end
+    end
+    do
+      local dhr, dhg, dhb = UF.GetDemonHunterSpecResourceRGB(unit, pType)
+      if dhr then
+        if dark then
+          dhr, dhg, dhb = DimPowerBarRGB(dhr, dhg, dhb)
+        end
+        bar:SetStatusBarColor(dhr, dhg, dhb)
         UF.ApplyPowerBarBackdrop(bar)
         return
       end

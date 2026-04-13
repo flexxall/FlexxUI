@@ -4,7 +4,8 @@ ns.DB = ns.DB or {}
 
 ns.DB.Defaults = {
   locked = false,
-  hideBlizzard = false,
+  --- Custom unit frames replace stock; hiding default player/target matches typical expectations.
+  hideBlizzard = true,
   --- Minimap launcher: show/hide and angle (degrees) on the minimap ring; legacy X/Y migrates on load.
   minimapButtonShow = true,
   minimapButtonAngle = 177,
@@ -22,7 +23,12 @@ ns.DB.Defaults = {
   powerTextColorMana = "white",
   powerTextColorResource = "white",
   powerTextAlign = "center",
-  powerBarColorStyle = "default",
+  --- Tint only: "none" = full saturation, "dark" = muted (legacy saved "default" migrates to "none").
+  powerBarColorStyle = "none",
+  --- Same keys as health bar texture: none = flat WHITE8x8, default = Blizzard UI-StatusBar strip, flat = flat matte.
+  powerBarTexture = "none",
+  powerBarUseCustomColor = false,
+  powerBarCustomColor = { r = 0.22, g = 0.52, b = 0.95 },
   --- full = resource bar below health (default). inset = thin bar overlapping bottom edge of health.
   powerBarLayout = "full",
   --- Top class resource pips (combo, holy power, chi, etc.): default bright class tint vs muted dark.
@@ -47,7 +53,7 @@ ns.DB.Defaults = {
   castBarTargetEnabled = true,
   castBarTargetShowIdle = false,
   hideBlizzardCastBar = false,
-  -- Cast bar spell name + timer: light (default UI), dark (readable on bright fill), warm yellow (matches name "yellow" preset).
+  -- Cast bar spell name + timer: light (default UI), dark (readable on bright fill), Flexx gold (warm_yellow; matches name "yellow" preset).
   castBarTextColorMode = "light",
   optionsGeneralSubTab = "settings",
   optionsFontsSubTab = "ui",
@@ -73,7 +79,9 @@ ns.DB.Defaults = {
     showCooldownLane = true,
     showDebuffLane = true,
     trackOnlyRelevantDebuffs = true,
-    --- Optional spell IDs to always consider for lane 3 (in addition to action bar + spellbook scan).
+    --- Lane 3: only show cooldowns at least this long (seconds). Action bar only — no full spellbook (avoids fishing/profs).
+    lane3MinCooldownSeconds = 8,
+    --- Optional spell IDs to always consider for lane 3 (e.g. trinket not on bar). Uses bar slot when placed on an action slot.
     extraCooldownSpellIDs = {},
   },
   --- Aura layout (px): BOTTOMLEFT of row → TOPLEFT of health. Per-unit; legacy unitFrameAura*Anchor* migrate on load.

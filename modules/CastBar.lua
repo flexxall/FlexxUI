@@ -292,7 +292,7 @@ local function ApplyCastTextColor(self)
   elseif mode == "dark" then
     r, g, b = 0.12, 0.12, 0.14
   elseif mode == "warm_yellow" then
-    r, g, b = 1, 0.88, 0.35
+    r, g, b = ns.GetFlexxGoldRGB()
   else
     r, g, b = 0.95, 0.95, 0.95
   end

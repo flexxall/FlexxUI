@@ -29,7 +29,10 @@ local function SecondaryPowerProbeList()
 end
 
 local function SecondaryPowerTypeColor(pt)
-  -- Prefer explicit class-resource palette, then fall back to PowerBarColor if available.
+  if UF.GetDemonHunterSpecResourceRGB then
+    local dr, dg, db = UF.GetDemonHunterSpecResourceRGB("player", pt)
+    if dr then return dr, dg, db end
+  end
   if Enum and Enum.PowerType then
     local E = Enum.PowerType
     if pt == E.HolyPower then return 0.95, 0.82, 0.32 end

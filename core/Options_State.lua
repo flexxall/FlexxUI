@@ -26,7 +26,7 @@ O.state = O.state or {
 
 function O.EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
-  if _G.FlexxUIDB.hideBlizzard == nil then _G.FlexxUIDB.hideBlizzard = false end
+  if _G.FlexxUIDB.hideBlizzard == nil then _G.FlexxUIDB.hideBlizzard = true end
   if _G.FlexxUIDB.playerHealthColorMode == nil then _G.FlexxUIDB.playerHealthColorMode = "class" end
   if _G.FlexxUIDB.healthBarTexture == nil then _G.FlexxUIDB.healthBarTexture = "default" end
   if _G.FlexxUIDB.healthTextMode == nil then _G.FlexxUIDB.healthTextMode = "percent" end
@@ -61,7 +61,21 @@ function O.EnsureDB()
     if v ~= nil and not validPowerTextColor[v] then _G.FlexxUIDB[key] = "white" end
   end
   if _G.FlexxUIDB.powerTextAlign == nil then _G.FlexxUIDB.powerTextAlign = "center" end
-  if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "default" end
+  if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "none" end
+  --- Legacy: old "default" meant bright/custom tint, not Blizzard texture — migrate to new tint name "none".
+  if _G.FlexxUIDB.powerBarColorStyle == "default" then _G.FlexxUIDB.powerBarColorStyle = "none" end
+  if _G.FlexxUIDB.powerBarTexture == nil then _G.FlexxUIDB.powerBarTexture = "none" end
+  if _G.FlexxUIDB.powerBarTexture ~= "none" and _G.FlexxUIDB.powerBarTexture ~= "default" and _G.FlexxUIDB.powerBarTexture ~= "flat" then
+    _G.FlexxUIDB.powerBarTexture = "none"
+  end
+  if _G.FlexxUIDB.powerBarUseCustomColor == nil then _G.FlexxUIDB.powerBarUseCustomColor = false end
+  if type(_G.FlexxUIDB.powerBarCustomColor) ~= "table" then
+    _G.FlexxUIDB.powerBarCustomColor = { r = 0.22, g = 0.52, b = 0.95 }
+  end
+  for _, k in ipairs({ "r", "g", "b" }) do
+    local v = _G.FlexxUIDB.powerBarCustomColor[k]
+    if type(v) ~= "number" or v ~= v then _G.FlexxUIDB.powerBarCustomColor[k] = (k == "r" and 0.22) or (k == "g" and 0.52) or 0.95 end
+  end
   if _G.FlexxUIDB.powerBarLayout == nil then _G.FlexxUIDB.powerBarLayout = "full" end
   if _G.FlexxUIDB.powerBarLayout ~= "full" and _G.FlexxUIDB.powerBarLayout ~= "inset" then
     _G.FlexxUIDB.powerBarLayout = "full"
@@ -81,7 +95,9 @@ function O.EnsureDB()
   if _G.FlexxUIDB.optionsGeneralSubTab == nil then _G.FlexxUIDB.optionsGeneralSubTab = "settings" end
   if _G.FlexxUIDB.optionsFontsSubTab == nil then _G.FlexxUIDB.optionsFontsSubTab = "ui" end
   if _G.FlexxUIDB.optionsShowAdvanced == nil then _G.FlexxUIDB.optionsShowAdvanced = false end
-  if _G.FlexxUIDB.combatCenter == nil then _G.FlexxUIDB.combatCenter = {} end
+  if type(_G.FlexxUIDB.combatCenter) ~= "table" then
+    _G.FlexxUIDB.combatCenter = {}
+  end
   local cc = _G.FlexxUIDB.combatCenter
   if cc.enabled == nil then cc.enabled = true end
   if cc.onlyInCombat == nil then cc.onlyInCombat = false end
@@ -96,6 +112,9 @@ function O.EnsureDB()
   if cc.showDebuffLane == nil then cc.showDebuffLane = true end
   if cc.trackOnlyRelevantDebuffs == nil then cc.trackOnlyRelevantDebuffs = true end
   if type(cc.extraCooldownSpellIDs) ~= "table" then cc.extraCooldownSpellIDs = {} end
+  if type(cc.lane3MinCooldownSeconds) ~= "number" or cc.lane3MinCooldownSeconds ~= cc.lane3MinCooldownSeconds then
+    cc.lane3MinCooldownSeconds = 8
+  end
   if type(cc.anchorX) ~= "number" then cc.anchorX = 0 end
   if type(cc.anchorY) ~= "number" then cc.anchorY = -180 end
   if _G.FlexxUIDB.optionsCollapsed == nil then _G.FlexxUIDB.optionsCollapsed = {} end

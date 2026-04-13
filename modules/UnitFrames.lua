@@ -5,7 +5,6 @@ local UF = ns.UnitFrames
 
 UF.state = UF.state or {
   frames = {},
-  blizzardHooksInstalled = false,
 }
 
 UF.const = UF.const or {
@@ -60,7 +59,7 @@ UF.const = UF.const or {
 
 function UF.EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
-  if _G.FlexxUIDB.hideBlizzard == nil then _G.FlexxUIDB.hideBlizzard = false end
+  if _G.FlexxUIDB.hideBlizzard == nil then _G.FlexxUIDB.hideBlizzard = true end
   if _G.FlexxUIDB.healthBarTexture == nil then _G.FlexxUIDB.healthBarTexture = "default" end
   if _G.FlexxUIDB.healthBarTexture == "dull" or _G.FlexxUIDB.healthBarTexture == "smooth" then _G.FlexxUIDB.healthBarTexture = "flat" end
   if not UF.const.textures[_G.FlexxUIDB.healthBarTexture] then
@@ -102,7 +101,16 @@ function UF.EnsureDB()
     if v ~= nil and not validPTC[v] then _G.FlexxUIDB[key] = "white" end
   end
   if _G.FlexxUIDB.powerTextAlign == nil then _G.FlexxUIDB.powerTextAlign = "center" end
-  if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "default" end
+  if _G.FlexxUIDB.powerBarColorStyle == nil then _G.FlexxUIDB.powerBarColorStyle = "none" end
+  if _G.FlexxUIDB.powerBarColorStyle == "default" then _G.FlexxUIDB.powerBarColorStyle = "none" end
+  if _G.FlexxUIDB.powerBarTexture == nil then _G.FlexxUIDB.powerBarTexture = "none" end
+  if _G.FlexxUIDB.powerBarTexture ~= "none" and _G.FlexxUIDB.powerBarTexture ~= "default" and _G.FlexxUIDB.powerBarTexture ~= "flat" then
+    _G.FlexxUIDB.powerBarTexture = "none"
+  end
+  if _G.FlexxUIDB.powerBarUseCustomColor == nil then _G.FlexxUIDB.powerBarUseCustomColor = false end
+  if type(_G.FlexxUIDB.powerBarCustomColor) ~= "table" then
+    _G.FlexxUIDB.powerBarCustomColor = { r = 0.22, g = 0.52, b = 0.95 }
+  end
   if _G.FlexxUIDB.powerBarLayout == nil then _G.FlexxUIDB.powerBarLayout = "full" end
   if _G.FlexxUIDB.powerBarLayout ~= "full" and _G.FlexxUIDB.powerBarLayout ~= "inset" then
     _G.FlexxUIDB.powerBarLayout = "full"

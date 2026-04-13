@@ -192,7 +192,7 @@ function UF.GetEffectiveNameTextColorRGB(f)
   if mode == "white" then
     return 0.95, 0.95, 0.95
   elseif mode == "yellow" then
-    return 1, 0.88, 0.35
+    return ns.GetFlexxGoldRGB()
   elseif mode == "dark" then
     return 0.08, 0.08, 0.1
   end
@@ -214,7 +214,7 @@ function UF.ApplyUnitTextStyle(fs, f, mode)
   if mode == "white" then
     r, g, b = 0.95, 0.95, 0.95
   elseif mode == "yellow" then
-    r, g, b = 1, 0.88, 0.35
+    r, g, b = ns.GetFlexxGoldRGB()
   elseif mode == "dark" then
     r, g, b = 0.08, 0.08, 0.1
   else
@@ -880,8 +880,24 @@ end
 
 function UF.UpdatePlayerResting(f)
   if not f or f.unit ~= "player" or not f.restingIcons then return end
-  --- IsResting() stays true in rested areas while fighting (e.g. dummies); hide zzz whenever in combat.
-  local showRest = IsResting() and not (UnitAffectingCombat and UnitAffectingCombat("player"))
+  --- IsResting() stays true in rested areas; hide zzz when combat/regen/threat say we're not "city idle".
+  local uac = UnitAffectingCombat and UnitAffectingCombat("player")
+  local regenOk = (not PlayerRegenEnabled) or PlayerRegenEnabled()
+  local threatSn = 0
+  pcall(function()
+    local situation
+    if UnitExists("target") then
+      local okAtk, atk = pcall(UnitCanAttack, "player", "target")
+      if okAtk and atk then
+        situation = UnitThreatSituation("player", "target")
+      end
+    end
+    if situation == nil then
+      situation = UnitThreatSituation("player")
+    end
+    threatSn = (type(situation) == "number") and situation or 0
+  end)
+  local showRest = IsResting() and not uac and regenOk and threatSn <= 0
   if showRest then
     if not f.restingActive then
       f.restingActive = true

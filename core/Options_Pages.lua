@@ -33,7 +33,133 @@ end
 
 local UNIT_PAGE_CONTENT_HEIGHT = 2200
 local TARGET_SUBTAB_HEIGHT = { frame = UNIT_PAGE_CONTENT_HEIGHT, cast = 420 }
-local PLAYER_SUBTAB_HEIGHT = { health = 980, power = 1920, classbar = 360, auras = 360, cast = 760, general = 520 }
+local PLAYER_SUBTAB_HEIGHT = { health = 980, power = 2280, classbar = 360, auras = 360, cast = 760, general = 520 }
+
+--- Automatic = Blizzard PowerBarColor (changes with class, spec, form). Custom = color picker.
+local function getPowerBarFillMode()
+  O.EnsureDB()
+  return (_G.FlexxUIDB.powerBarUseCustomColor == true) and "custom" or "automatic"
+end
+
+local function setPowerBarFillMode(mode)
+  O.EnsureDB()
+  if mode == "custom" then
+    if ns.UnitFrames and ns.UnitFrames.SetPowerBarUseCustomColor then
+      ns.UnitFrames.SetPowerBarUseCustomColor(true)
+    else
+      _G.FlexxUIDB.powerBarUseCustomColor = true
+    end
+  else
+    if ns.UnitFrames and ns.UnitFrames.ResetPowerBarToAutomaticColoring then
+      ns.UnitFrames.ResetPowerBarToAutomaticColoring()
+    else
+      _G.FlexxUIDB.powerBarUseCustomColor = false
+    end
+  end
+  O.RefreshControls()
+end
+
+--- Swatch + single button opening Blizzard ColorPickerFrame (no embedded ColorSelect).
+local function buildPowerBarCustomColorPicker(parent)
+  local row = CreateFrame("Frame", nil, parent)
+  row:SetSize(640, 64)
+
+  local lbl = O.ArtFont(row, "GameFontHighlightSmall")
+  lbl:SetPoint("TOPLEFT", 0, 0)
+  lbl:SetText("Custom color")
+
+  local swatch = CreateFrame("Button", nil, row, "BackdropTemplate")
+  swatch:SetSize(30, 30)
+  swatch:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -6)
+  O.StyleSurface(swatch, 1)
+  swatch:SetBackdropBorderColor(0.35, 0.4, 0.45, 1)
+  local tex = swatch:CreateTexture(nil, "ARTWORK")
+  tex:SetPoint("TOPLEFT", swatch, "TOPLEFT", 2, -2)
+  tex:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", -2, 2)
+  tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+
+  local function getRGB()
+    O.EnsureDB()
+    local c = _G.FlexxUIDB.powerBarCustomColor or {}
+    local r = type(c.r) == "number" and c.r or 0.22
+    local g = type(c.g) == "number" and c.g or 0.52
+    local b = type(c.b) == "number" and c.b or 0.95
+    return r, g, b
+  end
+
+  local function refreshSwatch()
+    tex:SetVertexColor(getRGB())
+  end
+
+  local function raiseColorPickerFrame()
+    local CPF = _G.ColorPickerFrame
+    if not CPF or not CPF.IsShown or not CPF:IsShown() then
+      return
+    end
+    if CPF.SetFrameStrata then
+      CPF:SetFrameStrata("FULLSCREEN_DIALOG")
+    end
+    if CPF.SetFrameLevel then
+      CPF:SetFrameLevel(5000)
+    end
+  end
+
+  local btn = O.MakeFlatButton(row, "Choose color…", 168, 26, function()
+    local CPF = _G.ColorPickerFrame
+    if not CPF or not CPF.SetupColorPickerAndShow then
+      return
+    end
+    local r, g, b = getRGB()
+    local function applyFromPicker()
+      local nr, ng, nb = CPF:GetColorRGB()
+      if ns.UnitFrames and ns.UnitFrames.SetPowerBarUseCustomColor then
+        ns.UnitFrames.SetPowerBarUseCustomColor(true)
+      else
+        O.EnsureDB()
+        _G.FlexxUIDB.powerBarUseCustomColor = true
+      end
+      if ns.UnitFrames and ns.UnitFrames.SetPowerBarCustomColorRGB then
+        ns.UnitFrames.SetPowerBarCustomColorRGB(nr, ng, nb)
+      else
+        O.EnsureDB()
+        _G.FlexxUIDB.powerBarCustomColor = { r = nr, g = ng, b = nb }
+        _G.FlexxUIDB.powerBarUseCustomColor = true
+      end
+      refreshSwatch()
+      O.RefreshControls()
+    end
+    CPF:SetupColorPickerAndShow({
+      r = r,
+      g = g,
+      b = b,
+      hasOpacity = false,
+      swatchFunc = applyFromPicker,
+      cancelFunc = function()
+        local pr, pg, pb = CPF:GetPreviousValues()
+        if type(pr) == "number" and type(pg) == "number" and type(pb) == "number" then
+          if ns.UnitFrames and ns.UnitFrames.SetPowerBarCustomColorRGB then
+            ns.UnitFrames.SetPowerBarCustomColorRGB(pr, pg, pb)
+          else
+            O.EnsureDB()
+            _G.FlexxUIDB.powerBarCustomColor = { r = pr, g = pg, b = pb }
+          end
+          refreshSwatch()
+          O.RefreshControls()
+        end
+      end,
+    })
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, raiseColorPickerFrame)
+    else
+      raiseColorPickerFrame()
+    end
+  end)
+  btn:SetPoint("LEFT", swatch, "RIGHT", 12, 0)
+
+  row.Refresh = refreshSwatch
+  refreshSwatch()
+  return row
+end
 
 local function addResourceBarLayoutSection(parent, below, gap)
   gap = gap or 16
@@ -315,7 +441,7 @@ function O.BuildGeneralPage(content)
             label = "Hide Blizzard player/target frames (experimental)",
             get = function() return _G.FlexxUIDB.hideBlizzard end,
             set = function(v)
-              _G.FlexxUIDB.hideBlizzard = v
+              _G.FlexxUIDB.hideBlizzard = v and true or false
               if ns.UnitFrames and ns.UnitFrames.ApplyHideBlizzard then ns.UnitFrames.ApplyHideBlizzard() end
             end,
           },
@@ -401,7 +527,7 @@ function O.BuildGeneralPage(content)
         controls = {
           { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "class", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "White", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "white", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
-          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "yellow", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Flexx gold", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "yellow", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Dark (near black)", get = function() return _G.FlexxUIDB.nameTextColorMode or "class" end, value = "dark", set = function(mode) _G.FlexxUIDB.nameTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetNameTextColorMode then ns.UnitFrames.SetNameTextColorMode(mode) end; O.RefreshControls() end },
         },
       },
@@ -587,6 +713,7 @@ function O.BuildCombatPage(content, mode)
           { type = "toggle", label = "Show unit-frame top resource pips", get = function() return _G.FlexxUIDB.showSecondaryResource ~= false end, set = function(v) _G.FlexxUIDB.showSecondaryResource = v and true or false; _G.FlexxUIDB.combatCenter = _G.FlexxUIDB.combatCenter or {}; _G.FlexxUIDB.combatCenter.topPipsUserSet = true; if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end end },
           { type = "toggle", label = "Show rotation lane (globals / next actions)", get = function() return _G.FlexxUIDB.combatCenter.showRotationLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showRotationLane = v and true or false; refreshCombat() end },
           { type = "toggle", label = "Show cooldown lane", get = function() return _G.FlexxUIDB.combatCenter.showCooldownLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showCooldownLane = v and true or false; refreshCombat() end },
+          { type = "slider_int", label = "Cooldown lane: min seconds (action bar)", min = 5, max = 120, step = 1, get = function() return _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds or 8 end, set = function(v) _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds = v; refreshCombat() end, gapAfter = 4 },
           { type = "toggle", label = "Show debuff lane (tracked debuffs)", get = function() return _G.FlexxUIDB.combatCenter.showDebuffLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showDebuffLane = v and true or false; refreshCombat() end },
         },
       },
@@ -645,7 +772,7 @@ function O.BuildCombatPage(content, mode)
           {
             type = "toggle",
             label = "Show only in combat",
-            get = function() return _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.onlyInCombat ~= false end,
+            get = function() return _G.FlexxUIDB.combatCenter and _G.FlexxUIDB.combatCenter.onlyInCombat == true end,
             set = function(v) _G.FlexxUIDB.combatCenter.onlyInCombat = v and true or false; refreshCombat() end,
           },
           {
@@ -753,7 +880,7 @@ function O.BuildUnitPlayerPage(content)
           { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "class", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "white", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "dark", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
-          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Flexx gold", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
         },
       },
     },
@@ -761,20 +888,50 @@ function O.BuildUnitPlayerPage(content)
 
   O.BuildSchemaPage(panelPower, {
     cardAlpha = 0.80,
+    sectionIndex = true,
     sections = {
       {
-        title = "Layout and fill",
+        title = "Layout",
+        hint = "Where the primary resource bar sits on the player frame.",
         collapsedKey = "player_power_layout",
         controls = {
           { type = "radio", label = "Full width below health", get = function() return _G.FlexxUIDB.powerBarLayout or "full" end, value = "full", set = function(mode) _G.FlexxUIDB.powerBarLayout = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Inset (overlaps health)", get = function() return _G.FlexxUIDB.powerBarLayout or "full" end, value = "inset", set = function(mode) _G.FlexxUIDB.powerBarLayout = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarLayout then ns.UnitFrames.SetPowerBarLayout(mode) end; O.RefreshControls() end, gapAfter = 12 },
-          { type = "radio", label = "Default (bright)", get = function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, value = "default", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end },
-          { type = "radio", label = "Dark (muted)", get = function() return _G.FlexxUIDB.powerBarColorStyle or "default" end, value = "dark", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end },
         },
       },
       {
-        title = "Resource text and color controls",
-        hint = "Legacy helper sections preserved while migrating to schema.",
+        title = "Bar texture",
+        hint = "Art on the fill strip. Default matches the stock UI bar; None and Flat use solid colors you control under Fill color.",
+        collapsedKey = "player_power_texture",
+        controls = {
+          { type = "radio", label = "None (solid)", get = function() return _G.FlexxUIDB.powerBarTexture or "none" end, value = "none", set = function(name) _G.FlexxUIDB.powerBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetPowerBarTexture then ns.UnitFrames.SetPowerBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Default (Blizzard strip)", get = function() return _G.FlexxUIDB.powerBarTexture or "none" end, value = "default", set = function(name) _G.FlexxUIDB.powerBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetPowerBarTexture then ns.UnitFrames.SetPowerBarTexture(name) end; O.RefreshControls() end },
+          { type = "radio", label = "Flat (matte overlay)", get = function() return _G.FlexxUIDB.powerBarTexture or "none" end, value = "flat", set = function(name) _G.FlexxUIDB.powerBarTexture = name; if ns.UnitFrames and ns.UnitFrames.SetPowerBarTexture then ns.UnitFrames.SetPowerBarTexture(name) end; O.RefreshControls() end, gapAfter = 12 },
+        },
+      },
+      {
+        title = "Tint",
+        hint = "Dark (muted) softens the bar frame and dims bright fills. Independent of fill color mode below.",
+        collapsedKey = "player_power_tint",
+        controls = {
+          { type = "radio", label = "None", get = function() return _G.FlexxUIDB.powerBarColorStyle or "none" end, value = "none", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Dark (muted)", get = function() return _G.FlexxUIDB.powerBarColorStyle or "none" end, value = "dark", set = function(mode) _G.FlexxUIDB.powerBarColorStyle = mode; if ns.UnitFrames and ns.UnitFrames.SetPowerBarColorStyle then ns.UnitFrames.SetPowerBarColorStyle(mode) end; O.RefreshControls() end, gapAfter = 12 },
+        },
+      },
+      {
+        title = "Fill color",
+        hint = "Automatic uses Blizzard PowerBarColor for your current spec and primary resource (e.g. DH Havoc Fury vs Vengeance Pain). Custom opens the standard game color window.",
+        collapsedKey = "player_power_fill",
+        controls = {
+          { type = "radio", label = "Automatic (Blizzard / spec & resource)", get = getPowerBarFillMode, value = "automatic", set = setPowerBarFillMode },
+          { type = "radio", label = "Custom (color picker)", get = getPowerBarFillMode, value = "custom", set = setPowerBarFillMode, gapAfter = 12 },
+          { type = "note", text = "Preview swatch and Choose color… use the movable Blizzard picker (hex, eyedropper when available). Tint still applies when set to Dark." },
+          { type = "custom", build = function(parent) return buildPowerBarCustomColorPicker(parent) end, gapAfter = 12 },
+        },
+      },
+      {
+        title = "Resource text",
+        hint = "Numbers and text on the bar (separate from bar fill).",
         collapsedKey = "player_power_legacy",
         advanced = true,
         controls = {
@@ -844,7 +1001,7 @@ function O.BuildUnitPlayerPage(content)
         controls = {
           { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "light", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
           { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "dark", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
-          { type = "radio", label = "Warm yellow (same as name preset)", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "warm_yellow", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
+          { type = "radio", label = "Flexx gold (same as name preset)", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "warm_yellow", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
           { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.castBarTextColorMode or "light" end, value = "class_color", set = function(mode) _G.FlexxUIDB.castBarTextColorMode = mode; if ns.CastBar and ns.CastBar.RefreshFromOptions then ns.CastBar.RefreshFromOptions() end; O.RefreshControls() end },
         },
       },
@@ -878,7 +1035,7 @@ function O.BuildUnitPlayerPage(content)
           { type = "radio", label = "Same as Fonts default", get = function() return getNameColorOverrideValue("player") end, value = "inherit", set = function(mode) setNameColorOverrideValue("player", mode) end },
           { type = "radio", label = "Class color", get = function() return getNameColorOverrideValue("player") end, value = "class", set = function(mode) setNameColorOverrideValue("player", mode) end },
           { type = "radio", label = "White", get = function() return getNameColorOverrideValue("player") end, value = "white", set = function(mode) setNameColorOverrideValue("player", mode) end },
-          { type = "radio", label = "Warm yellow", get = function() return getNameColorOverrideValue("player") end, value = "yellow", set = function(mode) setNameColorOverrideValue("player", mode) end },
+          { type = "radio", label = "Flexx gold", get = function() return getNameColorOverrideValue("player") end, value = "yellow", set = function(mode) setNameColorOverrideValue("player", mode) end },
           { type = "radio", label = "Dark (near black)", get = function() return getNameColorOverrideValue("player") end, value = "dark", set = function(mode) setNameColorOverrideValue("player", mode) end, gapAfter = 12 },
           { type = "toggle", label = "Show unit name", width = 390, get = function() return _G.FlexxUIDB.showUnitFrameName ~= false end, set = function(v) _G.FlexxUIDB.showUnitFrameName = v; if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end end },
         },
@@ -945,7 +1102,7 @@ function O.BuildUnitTargetPage(content)
           { type = "radio", label = "Same as Fonts default", get = function() return getNameColorOverrideValue("target") end, value = "inherit", set = function(mode) setNameColorOverrideValue("target", mode) end },
           { type = "radio", label = "Class color", get = function() return getNameColorOverrideValue("target") end, value = "class", set = function(mode) setNameColorOverrideValue("target", mode) end },
           { type = "radio", label = "White", get = function() return getNameColorOverrideValue("target") end, value = "white", set = function(mode) setNameColorOverrideValue("target", mode) end },
-          { type = "radio", label = "Warm yellow", get = function() return getNameColorOverrideValue("target") end, value = "yellow", set = function(mode) setNameColorOverrideValue("target", mode) end },
+          { type = "radio", label = "Flexx gold", get = function() return getNameColorOverrideValue("target") end, value = "yellow", set = function(mode) setNameColorOverrideValue("target", mode) end },
           { type = "radio", label = "Dark (near black)", get = function() return getNameColorOverrideValue("target") end, value = "dark", set = function(mode) setNameColorOverrideValue("target", mode) end, gapAfter = 12 },
           { type = "toggle", label = "Show unit name", get = function() return _G.FlexxUIDB.showUnitFrameName ~= false end, set = function(v) _G.FlexxUIDB.showUnitFrameName = v; if ns.UnitFrames and ns.UnitFrames.SetShowUnitFrameName then ns.UnitFrames.SetShowUnitFrameName(v) end end, width = 390 },
         },
@@ -975,7 +1132,7 @@ function O.BuildUnitTargetPage(content)
           { type = "radio", label = "Class color", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "class", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Light", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "white", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
           { type = "radio", label = "Dark", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "dark", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
-          { type = "radio", label = "Warm yellow", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
+          { type = "radio", label = "Flexx gold", get = function() return _G.FlexxUIDB.healthTextColorMode end, value = "yellow", set = function(mode) _G.FlexxUIDB.healthTextColorMode = mode; if ns.UnitFrames and ns.UnitFrames.SetHealthTextColorMode then ns.UnitFrames.SetHealthTextColorMode(mode) end; O.RefreshControls() end },
         },
       },
       {

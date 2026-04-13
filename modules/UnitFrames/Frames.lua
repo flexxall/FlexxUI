@@ -75,16 +75,34 @@ function UF.ApplyUnitFrameChildLevels(f)
   if f.auraTimerBarHost and f.auraTimerBarHost.SetFrameLevel then f.auraTimerBarHost:SetFrameLevel(az) end
 end
 
+local EnsureBlizzardStockUnitFrameHooks
+
 local function EnsureBlizzardRetryFrame()
   if UF.state.blizzardRetryFrame then return UF.state.blizzardRetryFrame end
   local rf = CreateFrame("Frame")
   rf:SetScript("OnEvent", function(self, event)
-    if event ~= "PLAYER_REGEN_ENABLED" then return end
-    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    if event == "PLAYER_REGEN_ENABLED" then
+      self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    if event == "ADDON_LOADED" then
+      --- PlayerFrame_Update / PlayerFrame do not exist until Blizzard_UnitFrame loads (after this file).
+      if EnsureBlizzardStockUnitFrameHooks then EnsureBlizzardStockUnitFrameHooks() end
+      if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then
+        UF.ApplyHideBlizzard()
+      end
+      return
+    end
+    if EnsureBlizzardStockUnitFrameHooks then EnsureBlizzardStockUnitFrameHooks() end
     UF.ApplyHideBlizzard()
   end)
+  rf:RegisterEvent("PLAYER_ENTERING_WORLD")
+  rf:RegisterEvent("ADDON_LOADED")
   UF.state.blizzardRetryFrame = rf
   return rf
+end
+
+local function IsInCombatLockdown()
+  return InCombatLockdown and InCombatLockdown()
 end
 
 --- RegisterEvent from secure hooks / combat paths is tainted; defer to next frame (Retail ADDON_ACTION_FORBIDDEN on RegisterEvent).
@@ -101,64 +119,237 @@ local function RegisterRegenRetryDeferred()
   end)
 end
 
-local function IsInCombatLockdown()
-  return InCombatLockdown and InCombatLockdown()
+--- First ApplyHideBlizzard often runs before frames exist, or while InCombatLockdown() is true. Poll until each stock frame is hidden.
+--- Do not require both PlayerFrame and TargetFrame: TargetFrame can load later; waiting for both left the player default frame visible.
+local hideBlizzardRetrySeq = 0
+local function ScheduleHideBlizzardRetry()
+  if not C_Timer or not C_Timer.After then return end
+  hideBlizzardRetrySeq = hideBlizzardRetrySeq + 1
+  local seq = hideBlizzardRetrySeq
+  local n = 0
+  local function tick()
+    if seq ~= hideBlizzardRetrySeq then return end
+    n = n + 1
+    if n > 400 then return end
+    UF.EnsureDB()
+    if not _G.FlexxUIDB.hideBlizzard then return end
+    UF.ApplyHideBlizzard()
+    if not _G.FlexxUIDB.hideBlizzard then return end
+    if IsInCombatLockdown() then
+      C_Timer.After(0, tick)
+      return
+    end
+    local needRetry = not PlayerFrame or not TargetFrame
+    if PlayerFrame and PlayerFrame:IsShown() then needRetry = true end
+    if TargetFrame and TargetFrame:IsShown() then needRetry = true end
+    if needRetry then
+      C_Timer.After(0, tick)
+    end
+  end
+  C_Timer.After(0, tick)
 end
 
-local function EnsureBlizzardHooks()
-  if UF.state.blizzardHooksInstalled then return end
-  if not PlayerFrame or not TargetFrame then return end
-  UF.state.blizzardHooksInstalled = true
-
-  PlayerFrame:HookScript("OnShow", function(self)
-    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then
-      if IsInCombatLockdown() then
-        RegisterRegenRetryDeferred()
-        return
-      end
-      self:Hide()
+local function HookBlizzardUnitOnShow(frame)
+  if not frame or not frame.HookScript or frame._flexxBlizzardHideHook then return end
+  frame._flexxBlizzardHideHook = true
+  frame:HookScript("OnShow", function(self)
+    if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+    if IsInCombatLockdown() then
+      RegisterRegenRetryDeferred()
+      ScheduleHideBlizzardRetry()
+      return
     end
-  end)
-  TargetFrame:HookScript("OnShow", function(self)
-    if _G.FlexxUIDB and _G.FlexxUIDB.hideBlizzard then
-      if IsInCombatLockdown() then
-        RegisterRegenRetryDeferred()
-        return
-      end
+    pcall(function()
+      self:SetAlpha(0)
+      self:EnableMouse(false)
       self:Hide()
-    end
+    end)
   end)
 end
 
 local function RestoreBlizzardUnitFrames()
-  if not PlayerFrame or not TargetFrame then return end
   if IsInCombatLockdown() then
     RegisterRegenRetryDeferred()
     return
   end
-  PlayerFrame:SetAlpha(1)
-  PlayerFrame:EnableMouse(true)
-  PlayerFrame:Show()
-  TargetFrame:SetAlpha(1)
-  TargetFrame:EnableMouse(true)
-  TargetFrame:Show()
+  if PlayerFrame then
+    pcall(function()
+      PlayerFrame:SetAlpha(1)
+      PlayerFrame:EnableMouse(true)
+      PlayerFrame:Show()
+    end)
+    for _, key in ipairs({ "PlayerFrameContainer", "PlayerFrameContent" }) do
+      local c = PlayerFrame[key] or _G[key]
+      if c then
+        pcall(function()
+          c:SetAlpha(1)
+          c:EnableMouse(true)
+          c:Show()
+        end)
+      end
+    end
+  end
+  if TargetFrame then
+    pcall(function()
+      TargetFrame:SetAlpha(1)
+      TargetFrame:EnableMouse(true)
+      TargetFrame:Show()
+    end)
+    for _, key in ipairs({ "TargetFrameContainer", "TargetFrameContent" }) do
+      local c = TargetFrame[key] or _G[key]
+      if c then
+        pcall(function()
+          c:SetAlpha(1)
+          c:EnableMouse(true)
+          c:Show()
+        end)
+      end
+    end
+  end
+end
+
+--- Retail splits chrome across Container + Content; hide each root Blizzard may Show independently.
+local function HideBlizzardUnitFrameExtraRoots(frame)
+  if frame == PlayerFrame and PlayerFrame then
+    for _, key in ipairs({ "PlayerFrameContainer", "PlayerFrameContent" }) do
+      local c = PlayerFrame[key] or _G[key]
+      if c and c.Hide then
+        HookBlizzardUnitOnShow(c)
+        pcall(function()
+          c:SetAlpha(0)
+          c:EnableMouse(false)
+          c:Hide()
+        end)
+      end
+    end
+  elseif frame == TargetFrame and TargetFrame then
+    for _, key in ipairs({ "TargetFrameContainer", "TargetFrameContent" }) do
+      local c = TargetFrame[key] or _G[key]
+      if c and c.Hide then
+        HookBlizzardUnitOnShow(c)
+        pcall(function()
+          c:SetAlpha(0)
+          c:EnableMouse(false)
+          c:Hide()
+        end)
+      end
+    end
+  end
+end
+
+local playerFramePostHidePending
+local targetFramePostHidePending
+local function RequestDeferredBlizzardUnitHide(which)
+  if not C_Timer or not C_Timer.After then return end
+  if which == "player" then
+    if playerFramePostHidePending then return end
+    playerFramePostHidePending = true
+    C_Timer.After(0, function()
+      playerFramePostHidePending = nil
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      if IsInCombatLockdown() then
+        RegisterRegenRetryDeferred()
+        ScheduleHideBlizzardRetry()
+        return
+      end
+      if PlayerFrame and PlayerFrame:IsShown() then
+        HideOneBlizzardUnitFrame(PlayerFrame)
+      end
+    end)
+  elseif which == "target" then
+    if targetFramePostHidePending then return end
+    targetFramePostHidePending = true
+    C_Timer.After(0, function()
+      targetFramePostHidePending = nil
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      if IsInCombatLockdown() then
+        RegisterRegenRetryDeferred()
+        ScheduleHideBlizzardRetry()
+        return
+      end
+      if TargetFrame and TargetFrame:IsShown() then
+        HideOneBlizzardUnitFrame(TargetFrame)
+      end
+    end)
+  end
+end
+
+local function HideOneBlizzardUnitFrame(frame)
+  if not frame then return end
+  HookBlizzardUnitOnShow(frame)
+  HideBlizzardUnitFrameExtraRoots(frame)
+  pcall(function()
+    frame:SetAlpha(0)
+    frame:EnableMouse(false)
+    frame:Hide()
+  end)
+end
+
+--- Installed after Blizzard_UnitFrame loads: at FlexxUI file load, PlayerFrame_Update is still nil so hooks must be deferred.
+local blizzardPlayerUpdateHooked = false
+local blizzardTargetUpdateHooked = false
+local blizzardPlayerShowHooked = false
+local blizzardTargetShowHooked = false
+
+EnsureBlizzardStockUnitFrameHooks = function()
+  if not hooksecurefunc then return end
+  if not blizzardPlayerUpdateHooked and type(_G.PlayerFrame_Update) == "function" then
+    blizzardPlayerUpdateHooked = true
+    hooksecurefunc("PlayerFrame_Update", function()
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      RequestDeferredBlizzardUnitHide("player")
+    end)
+  end
+  if not blizzardTargetUpdateHooked and type(_G.TargetFrame_Update) == "function" then
+    blizzardTargetUpdateHooked = true
+    hooksecurefunc("TargetFrame_Update", function()
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      RequestDeferredBlizzardUnitHide("target")
+    end)
+  end
+  local pf = _G.PlayerFrame
+  if not blizzardPlayerShowHooked and pf then
+    blizzardPlayerShowHooked = true
+    hooksecurefunc(pf, "Show", function(self)
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      if self == pf then
+        RequestDeferredBlizzardUnitHide("player")
+      end
+    end)
+  end
+  local tf = _G.TargetFrame
+  if not blizzardTargetShowHooked and tf then
+    blizzardTargetShowHooked = true
+    hooksecurefunc(tf, "Show", function(self)
+      if not _G.FlexxUIDB or not _G.FlexxUIDB.hideBlizzard then return end
+      if self == tf then
+        RequestDeferredBlizzardUnitHide("target")
+      end
+    end)
+  end
 end
 
 local function HideBlizzardUnitFrames()
-  if not PlayerFrame or not TargetFrame then return end
   if IsInCombatLockdown() then
     RegisterRegenRetryDeferred()
+    ScheduleHideBlizzardRetry()
     return
   end
-  EnsureBlizzardHooks()
-  PlayerFrame:SetAlpha(0); PlayerFrame:EnableMouse(false); PlayerFrame:Hide()
-  TargetFrame:SetAlpha(0); TargetFrame:EnableMouse(false); TargetFrame:Hide()
+  HideOneBlizzardUnitFrame(PlayerFrame)
+  HideOneBlizzardUnitFrame(TargetFrame)
+  if not PlayerFrame or not TargetFrame then
+    ScheduleHideBlizzardRetry()
+  end
 end
 
 function UF.ApplyHideBlizzard()
   UF.EnsureDB()
-  if not PlayerFrame or not TargetFrame then return end
-  if _G.FlexxUIDB.hideBlizzard then HideBlizzardUnitFrames() else RestoreBlizzardUnitFrames() end
+  EnsureBlizzardStockUnitFrameHooks()
+  if _G.FlexxUIDB.hideBlizzard then
+    HideBlizzardUnitFrames()
+  else
+    RestoreBlizzardUnitFrames()
+  end
 end
 
 local function BuildPlayerResting(f)
@@ -168,7 +359,7 @@ local function BuildPlayerResting(f)
   -- BOTTOMLEFT→health TOPLEFT: here, positive Y shifts the row *up* above the bar; use negative Y to sit lower so zzz overlaps the top edge of the fill.
   zSmall:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, HEALTH_TOP_EDGE_TEXT_Y)
   zSmall:SetText("z")
-  zSmall:SetTextColor(1, 0.88, 0.35)
+  ns.SetFontStringFlexxGoldColor(zSmall)
   zSmall:SetShadowOffset(1, -1)
   pcall(function() zSmall:SetDrawLayer("OVERLAY", 9) end)
   zSmall:Hide()
@@ -189,7 +380,7 @@ local function BuildPlayerResting(f)
   local zChainDy = -1
   zMid:SetPoint("BOTTOMLEFT", zSmall, "BOTTOMRIGHT", 2, zChainDy)
   zMid:SetText("z")
-  zMid:SetTextColor(1, 0.88, 0.35)
+  ns.SetFontStringFlexxGoldColor(zMid)
   zMid:SetShadowOffset(1, -1)
   pcall(function() zMid:SetDrawLayer("OVERLAY", 9) end)
   zMid:Hide()
@@ -198,7 +389,7 @@ local function BuildPlayerResting(f)
   local zBigExtraX = 1
   zBig:SetPoint("BOTTOMLEFT", zMid, "BOTTOMRIGHT", 2 + zBigExtraX, zChainDy)
   zBig:SetText("Z")
-  zBig:SetTextColor(1, 0.88, 0.35)
+  ns.SetFontStringFlexxGoldColor(zBig)
   zBig:SetShadowOffset(1, -1)
   pcall(function() zBig:SetDrawLayer("OVERLAY", 9) end)
   zBig:Hide()
@@ -528,10 +719,13 @@ function UF.Create()
   if not UF.state.frames.target then
     MakeUnitFrame("target", "target", { "TOPRIGHT", UIParent, "BOTTOMRIGHT", 0, -20 })
   end
-  --- Next frame: touching default unit frames during BuildUI can trigger secure-action errors on reload.
+  --- Next frame + retry until stock frames exist and lockdown allows hiding (see ScheduleHideBlizzardRetry).
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       UF.ApplyHideBlizzard()
+      if _G.FlexxUIDB.hideBlizzard then
+        ScheduleHideBlizzardRetry()
+      end
     end)
   else
     UF.ApplyHideBlizzard()

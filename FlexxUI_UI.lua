@@ -7,6 +7,10 @@ loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 local function EnsureDB()
   _G.FlexxUIDB = _G.FlexxUIDB or {}
+  --- Non-table values skip nested ApplyDefaults merge; Combat Center then sees enabled=nil and stays hidden.
+  if type(_G.FlexxUIDB.combatCenter) ~= "table" then
+    _G.FlexxUIDB.combatCenter = {}
+  end
   if ns.Options and ns.Options.MigrateLegacyOptionKeys then
     ns.Options.MigrateLegacyOptionKeys()
   end
@@ -41,10 +45,10 @@ end
 
 local function BuildUI()
   if ns.UIBuilt then return end
-  ns.UIBuilt = true
 
+  --- Options first; if O.Create() errors, UIBuilt is still false so PEW can retry. O.state.panel is only set after the options shell finishes building.
   if ns.Options and ns.Options.Register then
-    ns.Options.Register()
+    pcall(ns.Options.Register)
   end
 
   if ns.Minimap and ns.Minimap.CreateButton then
@@ -66,6 +70,8 @@ local function BuildUI()
   if ns.Fonts and ns.Fonts.Apply then
     ns.Fonts.Apply()
   end
+
+  ns.UIBuilt = true
 end
 
 --- Legacy name: open the main options panel (same as /flexxui with no args).
@@ -85,6 +91,10 @@ loader:SetScript("OnEvent", function(_, event, arg1)
     EnsureDB()
     if not ns.UIBuilt then
       BuildUI()
+    end
+    --- Blizzard_UnitFrame can finish after PLAYER_LOGIN; re-apply hide so stock frames do not reappear.
+    if ns.UnitFrames and ns.UnitFrames.ApplyHideBlizzard then
+      pcall(ns.UnitFrames.ApplyHideBlizzard)
     end
   end
 end)

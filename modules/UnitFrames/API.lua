@@ -8,7 +8,6 @@ function UF.SetHealthBarTexture(name)
   for _, f in pairs(UF.state.frames) do
     if f and f.health then
       UF.ApplyHealthBarTexture(f.health)
-      if f.power then UF.ApplyPowerBarTexture(f.power) end
       UF.UpdateUnitFrame(f)
     end
   end
@@ -27,7 +26,7 @@ end
 
 function UF.SetPowerBarColorStyle(style)
   UF.EnsureDB()
-  if style ~= "default" and style ~= "dark" then return false end
+  if style ~= "none" and style ~= "dark" then return false end
   _G.FlexxUIDB.powerBarColorStyle = style
   for _, f in pairs(UF.state.frames) do
     if f and f.power then
@@ -36,6 +35,45 @@ function UF.SetPowerBarColorStyle(style)
     end
   end
   return true
+end
+
+function UF.SetPowerBarTexture(name)
+  UF.EnsureDB()
+  if not UF.const.textures[name] then return false end
+  _G.FlexxUIDB.powerBarTexture = name
+  for _, f in pairs(UF.state.frames) do
+    if f and f.power then
+      UF.ApplyPowerBarTexture(f.power)
+      if f.unit then UF.UpdateUnitFrame(f) end
+    end
+  end
+  return true
+end
+
+function UF.SetPowerBarUseCustomColor(enabled)
+  UF.EnsureDB()
+  _G.FlexxUIDB.powerBarUseCustomColor = enabled and true or false
+  for _, f in pairs(UF.state.frames) do
+    if f and f.power and f.unit then UF.UpdateUnitFrame(f) end
+  end
+  return true
+end
+
+function UF.SetPowerBarCustomColorRGB(r, g, b)
+  UF.EnsureDB()
+  _G.FlexxUIDB.powerBarCustomColor = _G.FlexxUIDB.powerBarCustomColor or {}
+  _G.FlexxUIDB.powerBarCustomColor.r = r
+  _G.FlexxUIDB.powerBarCustomColor.g = g
+  _G.FlexxUIDB.powerBarCustomColor.b = b
+  for _, f in pairs(UF.state.frames) do
+    if f and f.power and f.unit then UF.UpdateUnitFrame(f) end
+  end
+  return true
+end
+
+--- Turn off custom fill so Blizzard / preset automatic colors apply again.
+function UF.ResetPowerBarToAutomaticColoring()
+  return UF.SetPowerBarUseCustomColor(false)
 end
 
 function UF.SetPowerBarLayout(layout)

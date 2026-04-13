@@ -4,9 +4,10 @@ local O = ns.Options
 function O.Create()
   if O.state.panel then return O.state.panel end
   O.EnsureDB()
+  --- A failed prior build (before O.state.panel was assigned) can leave stale control refs; avoid duplicate Refresh entries on retry.
+  O.state.controls = {}
 
   local panel = CreateFrame("Frame", "FlexxUI_Options", UIParent, "BackdropTemplate")
-  O.state.panel = panel
   panel:SetSize(960, 680)
   panel:SetPoint("CENTER", UIParent, "CENTER", 10, 0)
   panel:SetFrameStrata("DIALOG")
@@ -333,6 +334,7 @@ function O.Create()
 
   O.SelectTab("general")
   panel:Hide()
+  O.state.panel = panel
   return panel
 end
 
