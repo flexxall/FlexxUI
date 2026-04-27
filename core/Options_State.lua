@@ -107,7 +107,15 @@ function O.EnsureDB()
   if type(cc.spacing) ~= "number" then cc.spacing = 8 end
   if type(cc.debuffSize) ~= "number" then cc.debuffSize = 54 end
   if cc.showResourceLane == nil then cc.showResourceLane = true end
-  if cc.showRotationLane == nil then cc.showRotationLane = true end
+  if cc.showPrimaryLane == nil then
+    cc.showPrimaryLane = true
+  end
+  --- Revamp migration: lane 2 is now primary resource (not old rotation lane).
+  --- Do not keep legacy hidden-state from rotation; make lane 2 visible once.
+  if cc._lane2RevampVisibilityMigrated ~= true then
+    cc.showPrimaryLane = true
+    cc._lane2RevampVisibilityMigrated = true
+  end
   if cc.showCooldownLane == nil then cc.showCooldownLane = true end
   if cc.showDebuffLane == nil then cc.showDebuffLane = true end
   if cc.trackOnlyRelevantDebuffs == nil then cc.trackOnlyRelevantDebuffs = true end
@@ -117,6 +125,10 @@ function O.EnsureDB()
   end
   if type(cc.anchorX) ~= "number" then cc.anchorX = 0 end
   if type(cc.anchorY) ~= "number" then cc.anchorY = -180 end
+  if type(cc.lane1OffsetX) ~= "number" then cc.lane1OffsetX = 0 end
+  if type(cc.lane1OffsetY) ~= "number" then cc.lane1OffsetY = 0 end
+  if type(cc.lane2OffsetX) ~= "number" then cc.lane2OffsetX = 0 end
+  if type(cc.lane2OffsetY) ~= "number" then cc.lane2OffsetY = 0 end
   if _G.FlexxUIDB.optionsCollapsed == nil then _G.FlexxUIDB.optionsCollapsed = {} end
   O.MigrateLegacyOptionKeys()
   if _G.FlexxUIDB.optionsDevSubTab == nil then _G.FlexxUIDB.optionsDevSubTab = "cast" end

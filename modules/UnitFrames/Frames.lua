@@ -237,6 +237,17 @@ local function HideBlizzardUnitFrameExtraRoots(frame)
   end
 end
 
+local function HideOneBlizzardUnitFrame(frame)
+  if not frame then return end
+  HookBlizzardUnitOnShow(frame)
+  HideBlizzardUnitFrameExtraRoots(frame)
+  pcall(function()
+    frame:SetAlpha(0)
+    frame:EnableMouse(false)
+    frame:Hide()
+  end)
+end
+
 local playerFramePostHidePending
 local targetFramePostHidePending
 local function RequestDeferredBlizzardUnitHide(which)
@@ -272,17 +283,6 @@ local function RequestDeferredBlizzardUnitHide(which)
       end
     end)
   end
-end
-
-local function HideOneBlizzardUnitFrame(frame)
-  if not frame then return end
-  HookBlizzardUnitOnShow(frame)
-  HideBlizzardUnitFrameExtraRoots(frame)
-  pcall(function()
-    frame:SetAlpha(0)
-    frame:EnableMouse(false)
-    frame:Hide()
-  end)
 end
 
 --- Installed after Blizzard_UnitFrame loads: at FlexxUI file load, PlayerFrame_Update is still nil so hooks must be deferred.

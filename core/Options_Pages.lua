@@ -706,29 +706,55 @@ function O.BuildCombatPage(content, mode)
     sections = {
       {
         title = "Display lanes",
-        hint = "Enable/disable lanes so rotation globals, cooldowns, and debuffs can be separated cleanly.",
+        hint = "Lane 1 = secondary pips, lane 2 = primary resource bar, lane 3 = cooldown icons.",
         collapsedKey = "combat_lanes",
         controls = {
-          { type = "toggle", label = "Show resource lane (class pips / points)", get = function() return _G.FlexxUIDB.combatCenter.showResourceLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showResourceLane = v and true or false; refreshCombat() end },
-          { type = "toggle", label = "Show unit-frame top resource pips", get = function() return _G.FlexxUIDB.showSecondaryResource ~= false end, set = function(v) _G.FlexxUIDB.showSecondaryResource = v and true or false; _G.FlexxUIDB.combatCenter = _G.FlexxUIDB.combatCenter or {}; _G.FlexxUIDB.combatCenter.topPipsUserSet = true; if ns.UnitFrames and ns.UnitFrames.SetShowSecondaryResource then ns.UnitFrames.SetShowSecondaryResource(v) end end },
-          { type = "toggle", label = "Show rotation lane (globals / next actions)", get = function() return _G.FlexxUIDB.combatCenter.showRotationLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showRotationLane = v and true or false; refreshCombat() end },
-          { type = "toggle", label = "Show cooldown lane", get = function() return _G.FlexxUIDB.combatCenter.showCooldownLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showCooldownLane = v and true or false; refreshCombat() end },
-          { type = "slider_int", label = "Cooldown lane: min seconds (action bar)", min = 5, max = 120, step = 1, get = function() return _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds or 8 end, set = function(v) _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds = v; refreshCombat() end, gapAfter = 4 },
-          { type = "toggle", label = "Show debuff lane (tracked debuffs)", get = function() return _G.FlexxUIDB.combatCenter.showDebuffLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showDebuffLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show lane 1 (secondary pips)", get = function() return _G.FlexxUIDB.combatCenter.showResourceLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showResourceLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show primary resource lane (mana/energy/rage/etc.)", get = function() return _G.FlexxUIDB.combatCenter.showPrimaryLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showPrimaryLane = v and true or false; refreshCombat() end },
+          { type = "toggle", label = "Show lane 3 (cooldowns)", get = function() return _G.FlexxUIDB.combatCenter.showCooldownLane ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.showCooldownLane = v and true or false; refreshCombat() end, gapAfter = 12 },
         },
       },
       {
-        title = "Sizing",
-        hint = "Bigger debuffs can live in Combat Center instead of the compact unit-frame aura rows.",
-        collapsedKey = "combat_sizing",
+        title = "Lane placement",
+        hint = "Fine-tune lane 1 and lane 2 position inside Combat Center.",
+        collapsedKey = "combat_lane_placement",
         controls = {
-          { type = "slider_int", label = "Primary icon size", min = 24, max = 80, step = 1, get = function() return _G.FlexxUIDB.combatCenter.iconSize or 44 end, set = function(v) _G.FlexxUIDB.combatCenter.iconSize = v; refreshCombat() end, gapAfter = 4 },
-          { type = "slider_int", label = "Debuff icon size", min = 24, max = 100, step = 1, get = function() return _G.FlexxUIDB.combatCenter.debuffSize or 54 end, set = function(v) _G.FlexxUIDB.combatCenter.debuffSize = v; refreshCombat() end, gapAfter = 4 },
-          { type = "slider_int", label = "Icon spacing", min = 0, max = 20, step = 1, get = function() return _G.FlexxUIDB.combatCenter.spacing or 8 end, set = function(v) _G.FlexxUIDB.combatCenter.spacing = v; refreshCombat() end, gapAfter = 12 },
+          { type = "slider_int", label = "Lane 1 horizontal (px)", min = -200, max = 200, step = 1, get = function() return math.floor((_G.FlexxUIDB.combatCenter.lane1OffsetX or 0) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.lane1OffsetX = v; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Lane 1 vertical (px)", min = -200, max = 200, step = 1, get = function() return math.floor((_G.FlexxUIDB.combatCenter.lane1OffsetY or 0) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.lane1OffsetY = v; refreshCombat() end, gapAfter = 8 },
+          { type = "slider_int", label = "Lane 2 horizontal (px)", min = -200, max = 200, step = 1, get = function() return math.floor((_G.FlexxUIDB.combatCenter.lane2OffsetX or 0) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.lane2OffsetX = v; refreshCombat() end, gapAfter = 4 },
+          { type = "slider_int", label = "Lane 2 vertical (px)", min = -200, max = 200, step = 1, get = function() return math.floor((_G.FlexxUIDB.combatCenter.lane2OffsetY or 0) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.lane2OffsetY = v; refreshCombat() end, gapAfter = 10 },
+          { type = "button", label = "Reset lane 1 and lane 2 positions", width = 300, onClick = function()
+              _G.FlexxUIDB.combatCenter.lane1OffsetX = 0
+              _G.FlexxUIDB.combatCenter.lane1OffsetY = 0
+              _G.FlexxUIDB.combatCenter.lane2OffsetX = 0
+              _G.FlexxUIDB.combatCenter.lane2OffsetY = 0
+              refreshCombat()
+            end, gapAfter = 12 },
+          { type = "button", label = "Reset combat center anchor", width = 240, onClick = function()
+              _G.FlexxUIDB.combatCenter.anchorX = 0
+              _G.FlexxUIDB.combatCenter.anchorY = -180
+              refreshCombat()
+            end },
+        },
+      },
+      {
+        title = "Lane 3 settings",
+        hint = "Cooldown lane filtering and icon behavior.",
+        collapsedKey = "combat_lane3_settings",
+        controls = {
+          { type = "slider_int", label = "Cooldown lane: min seconds (action bar)", min = 5, max = 120, step = 1, get = function() return _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds or 8 end, set = function(v) _G.FlexxUIDB.combatCenter.lane3MinCooldownSeconds = v; refreshCombat() end, gapAfter = 4 },
           { type = "toggle", label = "Show cooldown swipe", get = function() return _G.FlexxUIDB.combatCenter.iconShowCooldownSwipe ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.iconShowCooldownSwipe = v and true or false; refreshCombat() end },
           { type = "toggle", label = "Desaturate unusable icons", get = function() return _G.FlexxUIDB.combatCenter.iconDesaturateUnusable ~= false end, set = function(v) _G.FlexxUIDB.combatCenter.iconDesaturateUnusable = v and true or false; refreshCombat() end, gapAfter = 4 },
           { type = "slider_int", label = "Usable icon opacity (%)", min = 20, max = 100, step = 5, get = function() return math.floor(((_G.FlexxUIDB.combatCenter.iconUsableAlpha or 1) * 100) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.iconUsableAlpha = v / 100; refreshCombat() end, gapAfter = 4 },
           { type = "slider_int", label = "Unusable icon opacity (%)", min = 10, max = 100, step = 5, get = function() return math.floor(((_G.FlexxUIDB.combatCenter.iconUnusableAlpha or 0.65) * 100) + 0.5) end, set = function(v) _G.FlexxUIDB.combatCenter.iconUnusableAlpha = v / 100; refreshCombat() end },
+        },
+      },
+      {
+        title = "Sizing",
+        hint = "Primary lane height follows icon size baseline; lane 3 uses icon size.",
+        collapsedKey = "combat_sizing",
+        controls = {
+          { type = "slider_int", label = "Lane 3 icon size", min = 24, max = 80, step = 1, get = function() return _G.FlexxUIDB.combatCenter.iconSize or 44 end, set = function(v) _G.FlexxUIDB.combatCenter.iconSize = v; refreshCombat() end },
         },
       },
     }
@@ -748,7 +774,7 @@ function O.BuildCombatPage(content, mode)
     sections = {
       {
         title = "Overview",
-        hint = "The resource lane (e.g. DK runic power) lives on this frame. If you see nothing, turn on \"Enable combat center manager\" below and, if needed, turn off \"Show only in combat\" so it is visible while idle.",
+        hint = "Lane 1 = secondary class pips, lane 2 = primary resource bar, lane 3 = cooldown lane (optional). If you see nothing, turn on \"Enable combat center manager\" below and disable \"Show only in combat\" while testing.",
         collapsedKey = "combat_overview",
         controls = {
           {

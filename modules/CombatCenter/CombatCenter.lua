@@ -43,7 +43,6 @@ local function ResetCooldownPresentationAfterLeaveCombat()
       end
     end
   end
-  clearPool(CC.state.lane2Icons)
   clearPool(CC.state.lane3Icons)
 end
 
@@ -52,60 +51,67 @@ local function Layout()
   local f = CC.state.frame
   if not f then return end
   local size = db.iconSize or 44
-  local showRotation = db.showRotationLane ~= false
+  local showPrimary = db.showPrimaryLane ~= false
   local showCooldown = db.showCooldownLane ~= false
+  local lane1OffsetX = type(db.lane1OffsetX) == "number" and db.lane1OffsetX or 0
+  local lane1OffsetY = type(db.lane1OffsetY) == "number" and db.lane1OffsetY or 0
+  local lane2OffsetX = type(db.lane2OffsetX) == "number" and db.lane2OffsetX or 0
+  local lane2OffsetY = type(db.lane2OffsetY) == "number" and db.lane2OffsetY or 0
   --- Horizontal gap between lane 2/3 icons matches lane 1 pip segment gap (`PIP_SEGMENT_GAP`).
   local iconGap = PIP_SEGMENT_GAP
   local rotationW = ICONS_LANE2 * size + (ICONS_LANE2 - 1) * iconGap
+  local lane2W = math.floor(rotationW * PIP_BAR_WIDTH_FRAC + 0.5)
+  local lane2H = math.max(LANE1_STATUS_H, 14)
   local cooldownW = ICONS_LANE3 * size + (ICONS_LANE3 - 1) * iconGap
-  local frameW = math.max(rotationW, cooldownW)
+  local frameW = math.max(rotationW, cooldownW, lane2W)
   local pipBarW = rotationW * PIP_BAR_WIDTH_FRAC
   local lane1InnerH = math.max(LANE1_STATUS_H, PIP_H)
   local lane1ContentH = lane1InnerH + (PIP_WRAP_PAD * 2)
   local lane1H = lane1ContentH + LANE1_BOTTOM_BG_H
-  local lane23Rows = (showRotation and 1 or 0) + (showCooldown and 1 or 0)
-  local totalH = lane1H + (lane23Rows > 0 and (PIP_ROTATION_GAP + lane23Rows * size) or 0)
+  local lane23Rows = (showPrimary and 1 or 0) + (showCooldown and 1 or 0)
+  --- Vertical gap between lane 2 and lane 3 matches horizontal icon gap (`PIP_SEGMENT_GAP`).
+  local lane23BetweenGap = (showPrimary and showCooldown) and PIP_SEGMENT_GAP or 0
+  local totalH = lane1H
+    + (lane23Rows > 0 and (1 + (showPrimary and lane2H or 0) + (showCooldown and size or 0) + lane23BetweenGap) or 0)
   f:SetSize(frameW, totalH)
 
   local wrapW = pipBarW + (PIP_WRAP_PAD * 2)
+  local lane1BaseX = 0
+  local lane1BaseY = -5
   CC.state.lane1Wrap:ClearAllPoints()
   CC.state.lane1Wrap:SetSize(wrapW, lane1H)
-  CC.state.lane1Wrap:SetPoint("TOPLEFT", f, "TOPLEFT", (frameW - wrapW) / 2, 0)
-  local lane1CenterYOff = math.floor(LANE1_BOTTOM_BG_H / 2)
+  CC.state.lane1Wrap:SetPoint("TOP", f, "TOP", lane1BaseX + lane1OffsetX, lane1BaseY + lane1OffsetY)
+  local lane1CenterYOff = 3
   if CC.state.lane1 then
     CC.state.lane1:ClearAllPoints()
     CC.state.lane1:SetSize(pipBarW, lane1InnerH)
     CC.state.lane1:SetPoint("CENTER", CC.state.lane1Wrap, "CENTER", 0, lane1CenterYOff)
   end
-  if CC.state.lane1Bar then
-    CC.state.lane1Bar:ClearAllPoints()
-    CC.state.lane1Bar:SetSize(pipBarW, LANE1_STATUS_H)
-    CC.state.lane1Bar:SetPoint("CENTER", CC.state.lane1Wrap, "CENTER", 0, lane1CenterYOff)
+
+  local lane2BaseX = 0
+  local lane2BaseY = -(lane1H + 4)
+  CC.state.lane2:ClearAllPoints()
+  CC.state.lane2:SetSize(lane2W, lane2H)
+  CC.state.lane2:SetPoint("TOP", f, "TOP", lane2BaseX + lane2OffsetX, lane2BaseY + lane2OffsetY)
+  if CC.state.lane2Bar then
+    CC.state.lane2Bar:ClearAllPoints()
+    CC.state.lane2Bar:SetSize(lane2W, lane2H)
+    CC.state.lane2Bar:SetPoint("TOPLEFT", CC.state.lane2, "TOPLEFT", 0, 0)
   end
 
-  local yBelowLane1 = lane1H + PIP_ROTATION_GAP
-  CC.state.lane2:ClearAllPoints()
-  CC.state.lane2:SetSize(rotationW, size)
-  CC.state.lane2:SetPoint("TOPLEFT", f, "TOPLEFT", (frameW - rotationW) / 2, -yBelowLane1)
-
-  if showRotation then
-    yBelowLane1 = yBelowLane1 + size
+  local lane3BaseX = 0
+  local lane3BaseY = lane2BaseY
+  if showPrimary then
+    lane3BaseY = lane3BaseY - lane2H
+    if showCooldown then
+      lane3BaseY = lane3BaseY - PIP_SEGMENT_GAP
+    end
   end
   CC.state.lane3:ClearAllPoints()
   CC.state.lane3:SetSize(cooldownW, size)
-  CC.state.lane3:SetPoint("TOPLEFT", f, "TOPLEFT", (frameW - cooldownW) / 2, -yBelowLane1)
+  CC.state.lane3:SetPoint("TOP", f, "TOP", lane3BaseX, lane3BaseY)
 
-  --- Chain icons with fixed pixel gap (same as pip `PIP_SEGMENT_GAP`).
-  for i = 1, ICONS_LANE2 do
-    local icon = CC.state.lane2Icons[i]
-    icon:ClearAllPoints()
-    icon:SetSize(size, size)
-    if i == 1 then
-      icon:SetPoint("TOPLEFT", CC.state.lane2, "TOPLEFT", 0, 0)
-    else
-      icon:SetPoint("TOPLEFT", CC.state.lane2Icons[i - 1], "TOPRIGHT", iconGap, 0)
-    end
-  end
+  --- Lane 2 is now a primary resource bar (not an icon row).
   for i = 1, ICONS_LANE3 do
     local icon = CC.state.lane3Icons[i]
     icon:ClearAllPoints()
@@ -209,14 +215,19 @@ local function CreateFrameOnce()
     fillTex:SetTexture("Interface\\Buttons\\WHITE8x8")
     CC.state.lane1Pips[i] = { holder = holder, bgTex = bgTex, fillTex = fillTex, tex = fillTex }
   end
+  CC.state.lane2 = CreateFrame("Frame", nil, f)
+  CC.state.lane3 = CreateFrame("Frame", nil, f)
+  CC.state.lane2:EnableMouse(false)
+  CC.state.lane3:EnableMouse(false)
   do
-    local bar = CreateFrame("StatusBar", nil, CC.state.lane1Wrap)
-    CC.state.lane1Bar = bar
-    bar:SetFrameLevel(CC.state.lane1Wrap:GetFrameLevel() + 3)
+    local bar = CreateFrame("StatusBar", nil, CC.state.lane2)
+    CC.state.lane2Bar = bar
+    bar:SetFrameLevel(CC.state.lane2:GetFrameLevel() + 2)
     local bg = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+    CC.state.lane2BarBg = bg
     bg:SetAllPoints(bar)
     bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    bg:SetVertexColor(PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B, PIP_EMPTY_A)
+    bg:SetVertexColor(0.08, 0.10, 0.14, 0.45)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     local st = bar:GetStatusBarTexture()
     if st then
@@ -227,14 +238,6 @@ local function CreateFrameOnce()
     bar:SetValue(0)
     bar:Hide()
     bar:EnableMouse(false)
-  end
-  CC.state.lane2 = CreateFrame("Frame", nil, f)
-  CC.state.lane3 = CreateFrame("Frame", nil, f)
-  CC.state.lane2:EnableMouse(false)
-  CC.state.lane3:EnableMouse(false)
-  for i = 1, ICONS_LANE2 do
-    --- No per-icon CooldownFrameTemplate border / gold edge; icon tex cropped like default action buttons.
-    CC.state.lane2Icons[i] = CC.NewIcon(CC.state.lane2, { rotationLane = true })
   end
   for i = 1, ICONS_LANE3 do
     CC.state.lane3Icons[i] = CC.NewIcon(CC.state.lane3)

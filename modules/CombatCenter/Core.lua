@@ -29,6 +29,18 @@ local function DB()
   if db.iconUnusableAlpha == nil then db.iconUnusableAlpha = 0.65 end
   if db.iconUsableAlpha == nil then db.iconUsableAlpha = 1 end
   if db.lane3MinCooldownSeconds == nil then db.lane3MinCooldownSeconds = 8 end
+  if db.showPrimaryLane == nil then
+    db.showPrimaryLane = true
+  end
+  --- Runtime safety for revamp migration: ensure lane 2 starts visible once.
+  if db._lane2RevampVisibilityMigrated ~= true then
+    db.showPrimaryLane = true
+    db._lane2RevampVisibilityMigrated = true
+  end
+  if type(db.lane1OffsetX) ~= "number" then db.lane1OffsetX = 0 end
+  if type(db.lane1OffsetY) ~= "number" then db.lane1OffsetY = 0 end
+  if type(db.lane2OffsetX) ~= "number" then db.lane2OffsetX = 0 end
+  if type(db.lane2OffsetY) ~= "number" then db.lane2OffsetY = 0 end
   return db
 end
 
@@ -472,6 +484,22 @@ local function CollectActionBarEntries()
   return out
 end
 
+--- When spell API reports ~0 duration but the cooldown is still active, total length may only exist on the duration object (Retail 12+).
+local function SpellTotalDurationFromDurationObject(spellID)
+  if not spellID or not C_Spell or not C_Spell.GetSpellCooldownDuration then return nil end
+  local ok, durObj = pcall(C_Spell.GetSpellCooldownDuration, spellID)
+  if not ok or not durObj then return nil end
+  local total = nil
+  pcall(function()
+    if durObj.GetTotalDuration then total = durObj:GetTotalDuration() end
+    if (type(total) ~= "number" or total <= 0.0001) and durObj.GetCooldownDuration then
+      total = durObj:GetCooldownDuration()
+    end
+  end)
+  if type(total) == "number" and total > 0.0001 then return total end
+  return nil
+end
+
 --- Raw start/duration/modRate for Cooldown:SetCooldown (Retail may use secret values; keep them in pcall paths).
 SpellCooldown = function(spellID)
   if not spellID then return 0, 0, true, 1 end
@@ -481,6 +509,27 @@ SpellCooldown = function(spellID)
       local en = info.isEnabled ~= false
       if not CooldownPlainInactive(info.duration) then
         return info.startTime, info.duration, en, SanitizeCooldownModRate(info.modRate)
+      end
+      local recover = false
+      pcall(function()
+        if info.isActive == true then recover = true end
+      end)
+      if not recover then
+        local okSt, stPos = pcall(function()
+          return type(info.startTime) == "number" and info.startTime > 0
+        end)
+        if okSt and stPos then recover = true end
+      end
+      if recover then
+        local total = SpellTotalDurationFromDurationObject(spellID)
+        if total then
+          local okSt, stPos = pcall(function()
+            return type(info.startTime) == "number" and info.startTime > 0
+          end)
+          if okSt and stPos then
+            return info.startTime, total, en, SanitizeCooldownModRate(info.modRate)
+          end
+        end
       end
     end
   end

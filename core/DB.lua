@@ -70,12 +70,17 @@ ns.DB.Defaults = {
     --- Screen offset from UIParent center (px). Negative Y moves the block down.
     anchorX = 0,
     anchorY = -180,
+    --- Per-lane offset nudges (px) inside Combat Center container.
+    lane1OffsetX = 0,
+    lane1OffsetY = 0,
+    lane2OffsetX = 0,
+    lane2OffsetY = 0,
     scale = 1,
     iconSize = 44,
     spacing = 8,
     debuffSize = 54,
     showResourceLane = true,
-    showRotationLane = true,
+    showPrimaryLane = true,
     showCooldownLane = true,
     showDebuffLane = true,
     trackOnlyRelevantDebuffs = true,

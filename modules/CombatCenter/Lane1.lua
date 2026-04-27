@@ -5,7 +5,6 @@ local ICONS_LANE2 = C.ICONS_LANE2
 local MAX_PIPS = C.MAX_PIPS
 local PIP_H = C.PIP_H
 local PIP_SEGMENT_GAP = C.PIP_SEGMENT_GAP
-local LANE1_POOL_MAX_THRESHOLD = C.LANE1_POOL_MAX_THRESHOLD
 local PIP_EMPTY_R, PIP_EMPTY_G, PIP_EMPTY_B = C.PIP_EMPTY_R, C.PIP_EMPTY_G, C.PIP_EMPTY_B
 local PIP_EMPTY_A = C.PIP_EMPTY_A
 local PIP_BAR_WIDTH_FRAC = C.PIP_BAR_WIDTH_FRAC
@@ -14,6 +13,7 @@ local PIP_WRAP_BG_A = C.PIP_WRAP_BG_A
 local LANE1_STATUS_H = C.LANE1_STATUS_H
 local LANE1_BOTTOM_BG_H = C.LANE1_BOTTOM_BG_H
 local PIP_BG_PAD = C.PIP_BG_PAD
+
 local function SecondaryPowerTypeColor(pt)
   local UFw = ns.UnitFrames
   if UFw and UFw.GetDemonHunterSpecResourceRGB then
@@ -48,33 +48,7 @@ local function SecondaryPowerTypeColor(pt)
   return 0.95, 0.85, 0.35
 end
 
---- True when Enum/table power types refer to the same resource (e.g. RunicPower vs index 6).
-local function PowerTypesMatch(a, b)
-  if a == nil or b == nil then return false end
-  if a == b then return true end
-  local na, nb
-  pcall(function() na = a + 0 end)
-  pcall(function() nb = b + 0 end)
-  if type(na) == "number" and type(nb) == "number" and na == nb then return true end
-  return false
-end
-
-local function Lane1UsePoolBar(mx, pt)
-  local ok = false
-  pcall(function()
-    ok = type(mx) == "number" and mx > LANE1_POOL_MAX_THRESHOLD
-  end)
-  if ok then return true end
-  local E = Enum and Enum.PowerType
-  if E and E.RunicPower ~= nil and pt == E.RunicPower then return true end
-  pcall(function()
-    if type(pt) == "number" and pt == 6 then ok = true end
-  end)
-  return ok
-end
-
---- Class/spec-aware lane 1: same selection as unit-frame top pips (SecondaryResource), then primary power bar.
---- For pool resources that are also the primary power bar (DK runic, warrior rage, â€¦), use the same tuple as UF.UpdatePowerBar.
+--- Class/spec-aware lane 1: secondary-resource pips only (same source as unit-frame top pips).
 ---
 --- Death Knight: UnitPowerType reports Runic Power first, but rotation is driven by Runes (Enum.PowerType.Runes, 0â€“6
 --- available charges that deplete). Runic Power is the inverse meter (fills when you spend runes). Lane 1 uses Runes
@@ -178,25 +152,8 @@ local function ReadPlayerPowerForLane1()
     end
   end
 
-  if pt == nil and UFw.GetUnitPowerBarValues then
-    pt, pc, pm = UFw.GetUnitPowerBarValues(unit)
-  end
-
+  --- Lane 1 is secondary-resource-only in the Combat Center revamp.
   if pt == nil then return nil, 0, 0 end
-
-  --- Do not merge DK lane-1 Runes with primary power bar; types differ (Runes vs Runic Power).
-  local E = Enum and Enum.PowerType
-  local isDkRunes = E and pt == E.Runes
-  if UFw.GetUnitPowerBarValues and Lane1UsePoolBar(pm, pt) and not isDkRunes then
-    local p2, c2, m2 = UFw.GetUnitPowerBarValues(unit)
-    if p2 ~= nil and PowerTypesMatch(pt, p2) then
-      local mc = UFw.CoerceAmount(m2)
-      if mc > 0 then
-        pt, pc, pm = p2, c2, m2
-      end
-    end
-  end
-
   return pt, pc, pm
 end
 
@@ -280,20 +237,13 @@ end
 local function UpdateLane1()
   local db = CC.DB()
   local wrap = CC.state.lane1Wrap
-  local bar = CC.state.lane1Bar
   local pipLane = CC.state.lane1
   if not wrap then return end
   local lane1Bg = CC.state.lane1Bg
   wrap:SetShown(db.showResourceLane ~= false)
   if not wrap:IsShown() then
     CC.state.lane1FastTick = false
-    if bar then bar:Hide() end
     if pipLane then pipLane:Hide() end
-    if lane1Bg then lane1Bg:Hide() end
-    if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
-    return
-  end
-  if not bar or not bar.SetMinMaxValues then
     if lane1Bg then lane1Bg:Hide() end
     if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
     return
@@ -311,7 +261,6 @@ local function UpdateLane1()
   end)
   if not valid then
     CC.state.lane1FastTick = false
-    bar:Hide()
     if pipLane then pipLane:Hide() end
     if lane1Bg then lane1Bg:Hide() end
     if CC.state.lane1BgBottom then CC.state.lane1BgBottom:Hide() end
@@ -322,84 +271,44 @@ local function UpdateLane1()
   local rotationW = ICONS_LANE2 * size + (ICONS_LANE2 - 1) * PIP_SEGMENT_GAP
   local pipBarW = rotationW * PIP_BAR_WIDTH_FRAC
   local wrapInner = math.max(0, (wrap:GetWidth() or 0) - (PIP_WRAP_PAD * 2))
-  local w = bar:GetWidth()
-  local h = bar:GetHeight()
+  local w = wrapInner
   if not w or w <= 0 then
-    w = (wrapInner > 0) and wrapInner or pipBarW
-  end
-  if not h or h <= 0 then
-    h = LANE1_STATUS_H
+    w = pipBarW
   end
   w = math.max(1, w or pipBarW)
   local lane1InnerH = math.max(LANE1_STATUS_H, PIP_H)
-  bar:SetSize(w, LANE1_STATUS_H)
   if pipLane then
-    --- Same height as Layout lane1 so pips can sit vertically centered in the strip (no wide bg wrapper).
     pipLane:SetSize(w, lane1InnerH)
   end
 
   CC.state.lane1FastTick = false
-  local usePool = Lane1UsePoolBar(pm, pt)
-  if usePool then
-    if pipLane then pipLane:Hide() end
-    local r, g, b = SecondaryPowerTypeColor(pt)
-    --- Mirror UF.UpdatePowerBar: read by power type and use normalized values, else raw (secret-safe).
-    local unit = "player"
-    local maxP = UnitPowerMax(unit, pt)
-    local cur = UnitPower(unit, pt)
-    local okNorm, cNum, mNum = pcall(function()
-      local c = cur + 0
-      local m = maxP + 0
-      if m <= 0 then return nil, nil end
-      if c > m then c = m end
-      if c < 0 then c = 0 end
-      return c, m
-    end)
-    local setOk = false
-    if okNorm and cNum ~= nil and mNum ~= nil then
-      setOk = pcall(function()
-        bar:SetMinMaxValues(0, mNum)
-        bar:SetValue(cNum)
-        bar:SetStatusBarColor(r, g, b, 1)
-      end)
-    end
-    if not setOk then
-      pcall(function()
-        bar:SetMinMaxValues(0, maxP)
-        bar:SetValue(cur)
-      end)
-      pcall(function()
-        bar:SetStatusBarColor(r, g, b, 1)
-      end)
-    end
-    local st = bar:GetStatusBarTexture()
-    if st then st:SetAlpha(1) end
-    bar:Show()
-  else
-    bar:Hide()
-    if pipLane then
-      pipLane:Show()
-      local n = math.min(MAX_PIPS, math.max(1, math.floor(pm + 0.5)))
-      local filled = math.min(n, math.max(0, math.floor(pc + 0.5)))
-      local progressList
-      local E = Enum and Enum.PowerType
-      if E and pt == E.Runes and GetRuneCooldown then
-        progressList = {}
-        for i = 1, n do
-          progressList[i] = GetRuneRechargeProgress(i)
-        end
+  local centerY = math.floor(LANE1_BOTTOM_BG_H / 2)
+  if pipLane then
+    pipLane:ClearAllPoints()
+    pipLane:SetSize(w, lane1InnerH)
+    pipLane:SetPoint("CENTER", wrap, "CENTER", 0, centerY)
+    pipLane:Show()
+    local n = math.min(MAX_PIPS, math.max(1, math.floor(pm + 0.5)))
+    local filled = math.min(n, math.max(0, math.floor(pc + 0.5)))
+    local progressList
+    local E = Enum and Enum.PowerType
+    if E and pt == E.Runes and GetRuneCooldown then
+      progressList = {}
+      for i = 1, n do
+        progressList[i] = GetRuneRechargeProgress(i)
       end
-      RepositionPips(n, filled, pt, w, progressList)
-      CC.state.lane1FastTick = progressList ~= nil
     end
+    RepositionPips(n, filled, pt, w, progressList)
+    CC.state.lane1FastTick = progressList ~= nil
   end
 
-  local yMainBg = math.floor(LANE1_BOTTOM_BG_H / 2)
+  local yMainBg = centerY
   if lane1Bg then
     lane1Bg:ClearAllPoints()
     lane1Bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    lane1Bg:SetVertexColor(0, 0, 0, PIP_WRAP_BG_A)
-    local bgH = usePool and (LANE1_STATUS_H + 2 * PIP_BG_PAD) or (PIP_H + 2 * PIP_BG_PAD)
+    --- Use depleted-track alpha on the wrap so the panel itself sits darker.
+    lane1Bg:SetVertexColor(0, 0, 0, PIP_EMPTY_A)
+    local bgH = PIP_H + 2 * PIP_BG_PAD
     lane1Bg:SetSize(w + 2 * PIP_BG_PAD, bgH)
     lane1Bg:SetPoint("CENTER", wrap, "CENTER", 0, yMainBg)
     lane1Bg:Show()

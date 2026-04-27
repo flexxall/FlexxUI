@@ -25,13 +25,89 @@ local function Lane3ClassifiesMajorDuration(spellID, sDuration, minSec)
   return false
 end
 
+--- When numeric duration is ~0, Retail may still have an active bar cooldown; merge total from `GetActionCooldownDuration` (same idea as Core.ApplyCooldownToIcon).
+local function ActionBarTotalDurationFromDurationObject(slot)
+  if not slot or not C_ActionBar or not C_ActionBar.GetActionCooldownDuration then return nil end
+  local ok, durObj = pcall(C_ActionBar.GetActionCooldownDuration, slot)
+  if not ok or not durObj then return nil end
+  local total = nil
+  pcall(function()
+    if durObj.GetTotalDuration then total = durObj:GetTotalDuration() end
+    if (type(total) ~= "number" or total <= 0.0001) and durObj.GetCooldownDuration then
+      total = durObj:GetCooldownDuration()
+    end
+  end)
+  if type(total) == "number" and total > 0.0001 then return total end
+  return nil
+end
+
+local function DurationLooksInactive(d)
+  if d == nil then return true end
+  local ok, dead = pcall(function()
+    return type(d) == "number" and d <= 0.0001
+  end)
+  return ok and dead or false
+end
+
+--- Coerce to a normal Lua number or nil (never return secret/comparison-hostile values to sort/UI).
+local function CoercePlainPositiveSeconds(x)
+  if x == nil then return nil end
+  local ok, n = pcall(function()
+    local t = type(x)
+    if t == "number" and x == x then return x end
+    if t == "string" then return tonumber(x) end
+    return tonumber(x)
+  end)
+  if not ok or type(n) ~= "number" or n ~= n or not CC.SafeNumberGt(n, 0.05) then return nil end
+  return n
+end
+
+--- Patch 12+ `DurationObject:GetRemainingDuration()` returns plain seconds; `startTime`/`duration` from tables may be secret so `CooldownRemain` is unusable.
+local function DurationObjectPlainRemainingSeconds(durObj)
+  if not durObj then return nil end
+  local r = nil
+  pcall(function()
+    r = durObj:GetRemainingDuration()
+  end)
+  r = CoercePlainPositiveSeconds(r)
+  if not r then
+    pcall(function()
+      local mod
+      pcall(function()
+        mod = Enum and Enum.DurationTimeModifier and Enum.DurationTimeModifier.RealTime
+      end)
+      if mod ~= nil then
+        local r2 = durObj:GetRemainingDuration(mod)
+        r = CoercePlainPositiveSeconds(r2)
+      end
+    end)
+  end
+  return r
+end
+
+local function SpellPlainRemainingFromDurationObject(spellID)
+  if not spellID or not C_Spell or not C_Spell.GetSpellCooldownDuration then return nil end
+  local ok, durObj = pcall(C_Spell.GetSpellCooldownDuration, spellID)
+  if ok and durObj then return DurationObjectPlainRemainingSeconds(durObj) end
+  return nil
+end
+
+local function ActionPlainRemainingFromDurationObject(slot)
+  if not slot or not C_ActionBar or not C_ActionBar.GetActionCooldownDuration then return nil end
+  local ok, durObj = pcall(C_ActionBar.GetActionCooldownDuration, slot)
+  if ok and durObj then return DurationObjectPlainRemainingSeconds(durObj) end
+  return nil
+end
+
 --- When C_Spell merge reports 0 duration, bar slot cooldown can still be authoritative (Retail 12+ table API or legacy returns).
 local function ActionBarCooldownForLane3(slot, now)
   if not slot then return nil end
   local st, du, en, mr
+  local acInfo
   if C_ActionBar and C_ActionBar.GetActionCooldown then
     local ok, info = pcall(C_ActionBar.GetActionCooldown, slot)
     if ok and type(info) == "table" then
+      acInfo = info
       st = info.startTime
       du = info.duration
       en = info.isEnabled ~= false
@@ -55,6 +131,47 @@ local function ActionBarCooldownForLane3(slot, now)
   end
   if st == nil or du == nil then return nil end
   local rem = CC.CooldownRemain(st, du, now)
+  if not CC.SafeNumberGt(rem, 0.05) and DurationLooksInactive(du) then
+    local tryDurObj = false
+    if type(acInfo) == "table" then
+      pcall(function()
+        if acInfo.isActive == true then tryDurObj = true end
+      end)
+      if not tryDurObj and not DurationLooksInactive(acInfo.duration) then tryDurObj = true end
+      if not tryDurObj then
+        local okSt, stPos = pcall(function()
+          return type(acInfo.startTime) == "number" and acInfo.startTime > 0
+        end)
+        if okSt and stPos then tryDurObj = true end
+      end
+    else
+      local okSt, stPos = pcall(function()
+        return type(st) == "number" and st > 0
+      end)
+      tryDurObj = okSt and stPos
+    end
+    if tryDurObj then
+      local total = ActionBarTotalDurationFromDurationObject(slot)
+      if total then
+        du = total
+        if type(acInfo) == "table" then
+          local okSt, stPos = pcall(function()
+            return type(acInfo.startTime) == "number" and acInfo.startTime > 0
+          end)
+          if okSt and stPos then st = acInfo.startTime end
+        end
+        rem = CC.CooldownRemain(st, du, now)
+      end
+    end
+  end
+  if not CC.SafeNumberGt(rem, 0.05) then
+    local rPlain = ActionPlainRemainingFromDurationObject(slot)
+    if rPlain then
+      rem = rPlain
+      local total = ActionBarTotalDurationFromDurationObject(slot)
+      if total then du = total end
+    end
+  end
   if not CC.SafeNumberGt(rem, 0.05) then return nil end
   return st, du, en ~= false, mr or 1, rem
 end
@@ -124,7 +241,17 @@ local function BuildLane3CooldownList(all, spellSlot, rotationList)
         end
       end
     end
-    if not CC.SafeNumberGt(remain, 0.05) then return end
+    if not CC.SafeNumberGt(remain, 0.05) then
+      local rSpell = SpellPlainRemainingFromDurationObject(sid)
+      if rSpell then
+        remain = rSpell
+      elseif actionSlotOpt then
+        local rAct = ActionPlainRemainingFromDurationObject(actionSlotOpt)
+        if rAct then remain = rAct end
+      end
+    end
+    remain = CoercePlainPositiveSeconds(remain)
+    if not remain then return end
 
     local major = Lane3ClassifiesMajorDuration(sid, du, minSec)
     --- Remaining time is often the only reliable signal when duration is masked or secret.
@@ -167,7 +294,12 @@ local function BuildLane3CooldownList(all, spellSlot, rotationList)
     local ar = a.inRotation and 1 or 0
     local br = b.inRotation and 1 or 0
     if ar ~= br then return ar < br end
-    return (a.remain or 0) > (b.remain or 0)
+    local ok, cmp = pcall(function()
+      local ra = CoercePlainPositiveSeconds(a.remain) or 0
+      local rb = CoercePlainPositiveSeconds(b.remain) or 0
+      return ra > rb
+    end)
+    return ok and cmp or false
   end)
   local cooldowns = {}
   for i = 1, math.min(icons3, #cd) do
